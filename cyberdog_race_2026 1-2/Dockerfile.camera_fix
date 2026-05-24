@@ -1,0 +1,15 @@
+# 基于 2026 仿真镜像，注入缺失的 RGB 摄像头传感器插件
+ARG BASE_IMAGE=cyberdog_sim:v2026
+FROM ${BASE_IMAGE}
+
+# 复制注入脚本
+COPY inject_camera_plugin.py /home/cyberdog_sim/inject_camera_plugin.py
+
+# 在构建时执行注入（不替换整个文件）
+RUN python3 /home/cyberdog_sim/inject_camera_plugin.py && \
+    echo "Camera plugin injected successfully."
+
+# 验证
+RUN grep -q 'libgazebo_ros_camera.so' /home/cyberdog_sim/install/share/cyberdog_description/xacro/gazebo.xacro && \
+    grep -q 'liblegged_plugin.so' /home/cyberdog_sim/install/share/cyberdog_description/xacro/gazebo.xacro && \
+    echo "Verification passed: camera + motion plugins present."
