@@ -120,6 +120,92 @@ class CenterOffsetScanner(PathScannerBase):
         return (self.center_x, white_pixels[-1]), mask.shape[0] - 1 - white_pixels[-1]
 
 
+class YellowEdgeDetector(PathScannerBase):
+    """
+    黄色边界检测器：检测赛道两侧的10cm宽黄色边沿
+    用于返回终点时的横向居中参考
+    
+    策略：
+    1. 检测黄色像素
+    2. 在图像下半部分找左右黄色边界
+    3. 计算与屏幕中心的偏移
+    4. 用于导航返回时的姿态校正
+    """
+    def __init__(self, done_callback=lambda x: None):
+        super().__init__("yellow_edge_detector", done_callback)
+
+    def image_callback(self, msg):
+        try:
+            cv_img = self.bridge.imgmsg_to_cv2(msg, 'bgr8')
+            self.img_height, self.center_x = cv_img.shape[0], cv_img.shape[1] // 2
+            self.frame_count += 1
+            result = self.specialized_detect(cv_img, None)
+            self.done_callback(result)
+        except Exception as e:
+            self.get_logger().error(f"Yellow Edge Detector Error: {str(e)}")
+
+    def specialized_detect(self, img, mask):
+        """
+        检测黄色边沿，用于确定机器人相对赛道的横向位置
+        """
+        h, w = img.shape[:2]
+        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+        
+        # HSV黄色阈值（赛道黄线）
+        lower_yellow = np.array([15, 60, 60])
+        upper_yellow = np.array([35, 255, 255])
+        yellow_mask = cv2.inRange(hsv, lower_yellow, upper_yellow)
+        
+        # 形态学处理
+        kernel = np.ones((3, 3), np.uint8)
+        yellow_mask = cv2.morphologyEx(yellow_mask, cv2.MORPH_CLOSE, kernel)
+        yellow_mask = cv2.morphologyEx(yellow_mask, cv2.MORPH_OPEN, kernel)
+        
+        # 只关注下半部分（机器人正在走的赛道）
+        roi_mask = yellow_mask[h//2:, :]
+        
+        # 找左右黄色边界
+        left_edges = []
+        right_edges = []
+        
+        # 扫描多条行，从下往上找黄色边界
+        for scan_y in [h-10, h-20, h-30, h-50]:
+            if scan_y < h//2:
+                break
+            scan_line = yellow_mask[scan_y, :]
+            yellow_pixels = np.where(scan_line > 128)[0]
+            
+            if len(yellow_pixels) > 0:
+                # 找左边黄色的右边界
+                left_yellow = yellow_pixels[yellow_pixels < self.center_x]
+                if len(left_yellow) > 0:
+                    left_edge = left_yellow[-1]  # 左黄线的右边界
+                    left_edges.append(left_edge)
+                
+                # 找右边黄色的左边界
+                right_yellow = yellow_pixels[yellow_pixels > self.center_x]
+                if len(right_yellow) > 0:
+                    right_edge = right_yellow[0]  # 右黄线的左边界
+                    right_edges.append(right_edge)
+        
+        result = {
+            'yellow_detected': len(left_edges) > 0 or len(right_edges) > 0,
+            'left_yellow_edge': int(np.mean(left_edges)) if left_edges else None,
+            'right_yellow_edge': int(np.mean(right_edges)) if right_edges else None,
+        }
+        
+        # 计算相对于屏幕中心的偏离
+        if result['left_yellow_edge'] is not None and result['right_yellow_edge'] is not None:
+            middle = (result['left_yellow_edge'] + result['right_yellow_edge']) / 2
+            result['track_center_offset'] = int(middle - self.center_x)
+            result['track_width'] = int(result['right_yellow_edge'] - result['left_yellow_edge'])
+        else:
+            result['track_center_offset'] = 0
+            result['track_width'] = 0
+        
+        return result
+
+
 class FootballScanner(PathScannerBase):
     """
     足球检测器：仿真中足球为纯白色球体
@@ -458,6 +544,11 @@ def football_scanner_main(timeout=5.0):
 
 def finish_circle_scanner_main(timeout=5.0):
     return path_scanner_main(FinishCircleScanner, timeout=timeout)
+
+
+def yellow_edge_scanner_main(timeout=5.0):
+    """检测赛道黄色边界，用于横向定位"""
+    return path_scanner_main(YellowEdgeDetector, timeout=timeout)
 
 
 def lidar_scanner_main(timeout=2.0):
