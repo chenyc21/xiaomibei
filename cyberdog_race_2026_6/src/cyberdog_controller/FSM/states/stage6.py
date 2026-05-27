@@ -4,15 +4,19 @@ from .basic_state import *
 
 class Stage6_Final(State):
     """
-    第六赛段：撷金建功 (视觉+传感器引导版)
+    第六赛段：撷金建功 (基于绝对位置的导航版)
+    
+    赛道坐标系：
+    - 足球位置：左上角（距左边50cm，距顶部50cm）
+    - 终点位置：右下角（50cm × 50cm正方形区域）
     
     流程:
     1. 等待传感器就绪
     2. 搜索足球（扫描）
     3. 接近足球
-    4. 快速冲撞足球（可连续撞击）
-    5. 扫描回到终点（固定位置）
-    6. 进入终点圆（50cm直径）
+    4. 快速冲撞足球（连续撞击踢飞）
+    5. 原地转身180° + 前进（绝对位置导航）
+    6. 利用LiDAR左右距离居中（进入50cm正方形区域）
     7. 趴下结算
     """
 
@@ -32,16 +36,16 @@ class Stage6_Final(State):
             Approach_Football(25.0),
             Standing(1.0),
             
-            # 4. 快速冲撞足球 - 加速冲撞，可能需要多次撞击
+            # 4. 快速冲撞足球 - 全速撞击，可连续多次
             Rush_And_Kick_Football(8.0),
             Standing(2.0),
             
-            # 5. 扫描并返回终点 - LiDAR/摄像头找终点标记，走回去
-            Scan_And_Return_To_Finish(20.0),
+            # 5. 基于绝对位置导航返回终点 - 转身180°+前进
+            Navigate_To_Finish_By_Position(15.0),
             Standing(1.0),
             
-            # 6. 精确进入终点圆 - 调整位置，确保四只脚在50cm圆内
-            Precise_Enter_Finish_Circle(10.0),
+            # 6. 精确进入终点正方形区域 - 用LiDAR左右距离校准居中
+            Enter_Finish_Circle_Precise(12.0),
             Standing(1.0),
             
             # 7. 趴下结算
