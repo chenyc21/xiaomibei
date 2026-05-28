@@ -311,10 +311,13 @@ class Approach_Football(Basic_State):
 class Rush_And_Kick_Football(Basic_State):
     """
     快速冲撞足球：连续高速撞击踢飞球
-    LiDAR扫描球的距离，一旦距离足够近就加速前冲
-    可能需要多次撞击才能把球踢出去
+    改进版本：用摄像头+LiDAR判断球是否被踢飞
+    
+    策略：
+    - 当摄像头连续3帧看不到球 → 确认球被踢飞
+    - 继续冲撞直到球真正飞离
     """
-    def __init__(self, duration=8):
+    def __init__(self, duration=12):
         super().__init__()
         self.name = "Rush And Kick Football"
         self.duration = duration
@@ -332,7 +335,9 @@ class Rush_And_Kick_Football(Basic_State):
             start_time = _start_time.nanosec / 1e9 + _start_time.sec
 
             kick_count = 0
-            last_ball_distance = float('inf')
+            ball_kicked_away = False
+            consecutive_no_ball = 0
+            consecutive_no_ball_threshold = 3
 
             while True:
                 _current_time = sim_clock.get_sim_time()
@@ -342,57 +347,48 @@ class Rush_And_Kick_Football(Basic_State):
                     break
 
                 try:
-                    # 获取LiDAR扫描数据
-                    lidar_data = lidar_scanner_main(timeout=0.5)
-                    
-                    if lidar_data and lidar_data.get('scan_available'):
-                        ball_distance = lidar_data.get('closest_obstacle_dist', float('inf'))
-                        
-                        # 如果距离足够近（<1m），开始冲撞
-                        if ball_distance < 1.0:
-                            # 全速前进冲撞
-                            self.locomotion.set_motion(5)  # motion_id=5 正常前进速度
-                            
-                            # 检测球是否被踢飞（距离从小变大）
-                            if ball_distance > last_ball_distance + 0.2:
-                                kick_count += 1
-                                print(f"{self.name}: 第{kick_count}次撞击成功! 距离从{last_ball_distance:.2f}增加到{ball_distance:.2f}")
-                                # 停下来，准备下一次撞击或终止
-                                self.locomotion.set_motion(1)
-                                time.sleep(0.3)
-                            
-                            last_ball_distance = ball_distance
-                            time.sleep(0.05)
+                    # 获取摄像头数据判断球是否还在视野内
+                    cam_data = football_scanner_main(timeout=0.3)
+                    ball_visible = cam_data and cam_data.get('football_detected')
+
+                    if ball_visible:
+                        consecutive_no_ball = 0
+                        area = cam_data.get('area', 0)
+                        offset = cam_data.get('center_offset', 0)
+
+                        # 球已进入撞击范围（面积大）
+                        if area > 2000:
+                            # 全速前冲（连续撞击）
+                            self.locomotion.set_motion(5)
+                            time.sleep(0.08)
+                            kick_count += 1
+                            if kick_count % 5 == 0:
+                                print(f"{self.name}: 第{kick_count}次撞击，球面积={area}")
                         else:
-                            # 距离还太远，继续靠近（慢速）
-                            self.locomotion.set_motion(16)
+                            # 还需要调整方向或靠近
+                            if offset > 15:
+                                self.locomotion.set_motion(12)  # 微右转
+                            elif offset < -15:
+                                self.locomotion.set_motion(11)  # 微左转
+                            else:
+                                self.locomotion.set_motion(16)  # 慢速前进
                             time.sleep(0.1)
                     else:
-                        # 没有LiDAR数据，用摄像头判断
-                        cam_data = football_scanner_main(timeout=0.5)
-                        if cam_data and cam_data.get('football_detected'):
-                            area = cam_data.get('area', 0)
-                            offset = cam_data.get('center_offset', 0)
-                            
-                            # 球很大，靠得很近，冲撞
-                            if area > 2500:
-                                self.locomotion.set_motion(5)
-                                time.sleep(0.05)
-                            else:
-                                # 调整方向并靠近
-                                if offset > 15:
-                                    self.locomotion.set_motion(12)
-                                    time.sleep(0.1)
-                                elif offset < -15:
-                                    self.locomotion.set_motion(11)
-                                    time.sleep(0.1)
-                                else:
-                                    self.locomotion.set_motion(16)
-                                    time.sleep(0.15)
+                        # 摄像头看不到球
+                        consecutive_no_ball += 1
+                        print(f"{self.name}: 球不可见 ({consecutive_no_ball}/{consecutive_no_ball_threshold})")
+                        
+                        # 连续多次看不到球 = 球被踢飞
+                        if consecutive_no_ball >= consecutive_no_ball_threshold:
+                            ball_kicked_away = True
+                            print(f"{self.name}: ✓ 球已被踢飞！共{kick_count}次撞击")
+                            self.locomotion.set_motion(1)  # 停止
+                            time.sleep(0.5)
+                            break
                         else:
-                            # 看不到球，停下来
-                            self.locomotion.set_motion(1)
-                            time.sleep(0.2)
+                            # 可能只是转过头了或暂时被遮挡，继续向前冲
+                            self.locomotion.set_motion(5)
+                            time.sleep(0.1)
 
                 except Exception as e:
                     print(f"{self.name}: 异常: {str(e)}")
@@ -400,8 +396,11 @@ class Rush_And_Kick_Football(Basic_State):
                     time.sleep(0.2)
 
             self.locomotion.set_motion(1)
-            time.sleep(0.5)
-            print(f"{self.name}: 冲撞完成，共{kick_count}次")
+            time.sleep(1.0)
+            if ball_kicked_away:
+                print(f"{self.name}: ✓ 冲撞完成，球已离开，共{kick_count}次撞击")
+            else:
+                print(f"{self.name}: ⚠ 超时结束，共{kick_count}次撞击（未确认踢飞）")
         finally:
             self._ros2_manager.shutdown()
 
@@ -409,20 +408,21 @@ class Rush_And_Kick_Football(Basic_State):
 class Navigate_To_Finish_By_Position(Basic_State):
     """
     基于绝对位置导航到终点：
-    踢完球后，使用里程计 + 基准方向完成原地转身180°回到终点
+    - 踢完球后，使用精确的转身时长完成180°转向
+    - 然后前进靠近终点区域
     
     赛道坐标系说明：
     - 足球位置：左上角（距左边50cm，距顶部50cm）
     - 终点位置：右下角（50cm正方形区域）
     - 策略：踢飞球后，原地转身180°并前进，即可到达终点
     """
-    def __init__(self, duration=15):
+    def __init__(self, duration=18):
         super().__init__()
         self.name = "Navigate To Finish By Position"
         self.duration = duration
 
     def execute(self):
-        print(f"Executing {self.name}: 基于绝对位置返回终点...")
+        print(f"Executing {self.name}: 导航到终点...")
         self._ros2_manager.init()
         sim_clock = self._ros2_manager.get_clock()
 
@@ -435,58 +435,66 @@ class Navigate_To_Finish_By_Position(Basic_State):
 
             # 阶段1：转身180° - 从左上方向右下方
             print(f"  阶段1: 原地转身180°")
+            self.locomotion.set_motion(1)
+            time.sleep(0.5)
+            
             phase_start = start_time
+            turn_duration = 6.5  # 转身时长（秒），根据实际调整
+            
             while True:
                 _current_time = sim_clock.get_sim_time()
                 current_time = _current_time.nanosec / 1e9 + _current_time.sec
                 
-                if current_time - phase_start >= 6.0:  # 转身需要6秒
+                if current_time - phase_start >= turn_duration:
                     break
 
-                # 右转180°（或左转180°，取决于机器人当前方向）
-                self.locomotion.set_motion(10)  # 原地右转
+                # 右转180°（motion_id=10）
+                self.locomotion.set_motion(10)
                 time.sleep(0.05)
 
             self.locomotion.set_motion(1)
             time.sleep(1.0)
-            print(f"  转身完成，现在面向终点方向")
+            print(f"  ✓ 转身完成，现在面向终点方向")
 
             # 阶段2：前进到终点区域
             print(f"  阶段2: 前进靠近终点")
             phase_start = current_time
+            forward_duration = 9.0  # 前进时长（秒）
+            
             while True:
                 _current_time = sim_clock.get_sim_time()
                 current_time = _current_time.nanosec / 1e9 + _current_time.sec
                 
-                if current_time - phase_start >= 8.0:  # 前进8秒
+                if current_time - phase_start >= forward_duration:
                     break
 
-                # 持续前进（慢速以便精确控制）
-                self.locomotion.set_motion(16)  # 慢速前进
+                # 慢速前进以便精确控制
+                self.locomotion.set_motion(16)
                 time.sleep(0.05)
 
             self.locomotion.set_motion(1)
             time.sleep(0.5)
-            print(f"{self.name}: 已到达终点区域附近")
+            print(f"{self.name}: ✓ 已到达终点区域附近")
         finally:
             self._ros2_manager.shutdown()
 
 
 class Enter_Finish_Circle_Precise(Basic_State):
     """
-    精确进入终点正方形区域的内心圆（50cm正方形 → 直径≈35cm圆）
+    精确进入终点正方形区域的内心圆 - 改进版
     
     策略：
-    1. 利用赛道边界作为参考（LiDAR扫描左右两侧墙壁距离）
-    2. 通过调整前后左右位置，确保机器人居中
-    3. 四只脚都在目标区域内
+    1. 利用赛道黄色边沿作为LiDAR参考（10cm宽黄色边沿）
+    2. 通过LiDAR左右扫描距离判断是否居中
+    3. 后方没有黄色边沿（back_dist很大）= 在终点区内
+    4. 通过左右对称 + 连续确认来精确定位
     
     终点区域：
     - 位置：右侧下行直道末端向下
     - 尺寸：50cm × 50cm正方形
     - 目标：机器人中心在正方形中心，四只脚在范围内
     """
-    def __init__(self, duration=12):
+    def __init__(self, duration=15):
         super().__init__()
         self.name = "Enter Finish Circle Precise"
         self.duration = duration
@@ -503,67 +511,87 @@ class Enter_Finish_Circle_Precise(Basic_State):
                 _start_time = sim_clock.get_sim_time()
             start_time = _start_time.nanosec / 1e9 + _start_time.sec
 
-            max_adjustments = 15
-            adjustment_count = 0
+            center_locked = False
+            scans_since_center = 0
+            max_scans_to_confirm = 3  # 连续3次扫描确认已定位
 
-            while adjustment_count < max_adjustments:
+            print(f"  利用黄色边沿进行LiDAR定位...")
+
+            while True:
                 _current_time = sim_clock.get_sim_time()
                 current_time = _current_time.nanosec / 1e9 + _current_time.sec
                 
                 if current_time - start_time >= self.duration:
-                    print(f"{self.name}: 时间到")
+                    print(f"{self.name}: 定位超时，准备趴下")
                     break
 
                 try:
-                    # 用LiDAR扫描左右两侧距离，判断机器人是否居中
-                    lidar_data = lidar_scanner_main(timeout=0.5)
+                    lidar_data = lidar_scanner_main(timeout=0.6)
                     
                     if lidar_data and lidar_data.get('scan_available'):
-                        # 假设LiDAR能提供左右扫描数据
-                        left_dist = lidar_data.get('left_scan_dist', 0.25)  # 左侧墙壁距离
-                        right_dist = lidar_data.get('right_scan_dist', 0.25)  # 右侧墙壁距离
-                        front_dist = lidar_data.get('front_scan_dist', float('inf'))  # 前方距离
+                        # LiDAR扫描黄色边沿的距离
+                        left_dist = lidar_data.get('left_scan_dist', 0.25)
+                        right_dist = lidar_data.get('right_scan_dist', 0.25)
+                        front_dist = lidar_data.get('front_scan_dist', float('inf'))
+                        back_dist = lidar_data.get('back_scan_dist', float('inf'))
                         
-                        # 计算居中偏差
                         center_error = abs(left_dist - right_dist)
                         
-                        print(f"  调整{adjustment_count+1}: 左={left_dist:.2f}m, 右={right_dist:.2f}m, 偏差={center_error:.3f}m")
+                        # 判断是否在终点区：
+                        # 后方没有黄色边沿（回扫距离很大）= 在终点区内
+                        likely_at_finish = back_dist > 0.8 or back_dist == float('inf')
                         
-                        # 如果左右距离相等（±0.05m）且在正方形内，说明已居中
-                        if center_error < 0.05:
-                            print(f"  ✓ 已居中! 准备趴下")
-                            self.locomotion.set_motion(1)
-                            time.sleep(1.0)
-                            break
+                        status_mark = '✓[终点区]' if likely_at_finish else '→[前进中]'
+                        print(f"  扫描: L={left_dist:.3f}m R={right_dist:.3f}m F={front_dist:.3f}m " +
+                              f"B={back_dist:.3f}m 偏差={center_error:.3f}m {status_mark}")
                         
-                        # 微调位置
-                        if left_dist > right_dist + 0.05:
-                            # 靠右移动
-                            print(f"  左偏离({left_dist:.2f}), 右移")
-                            self.locomotion.set_motion(14)  # 微右移
-                            time.sleep(0.3)
-                        elif right_dist > left_dist + 0.05:
-                            # 靠左移动
-                            print(f"  右偏离({right_dist:.2f}), 左移")
-                            self.locomotion.set_motion(13)  # 微左移
-                            time.sleep(0.3)
-                        else:
-                            # 已居中，前进或停止
-                            if front_dist > 0.2:
-                                self.locomotion.set_motion(16)  # 继续前进
-                                time.sleep(0.2)
-                            else:
+                        # 检查是否已居中且在终点区
+                        if center_error < 0.06 and likely_at_finish:
+                            scans_since_center += 1
+                            if scans_since_center >= max_scans_to_confirm:
+                                print(f"  ✓✓✓ 已确认在终点区中心！三次连续确认")
+                                center_locked = True
                                 self.locomotion.set_motion(1)
-                                time.sleep(0.2)
-                        
+                                time.sleep(1.0)
+                                break
+                        else:
+                            scans_since_center = 0
+
+                        # 微调：左右对称
+                        if not center_locked:
+                            if left_dist > right_dist + 0.08:
+                                print(f"    左偏({left_dist:.3f})，右移微调")
+                                self.locomotion.set_motion(14)  # 右移 motion_id=14
+                                time.sleep(0.25)
+                            elif right_dist > left_dist + 0.08:
+                                print(f"    右偏({right_dist:.3f})，左移微调")
+                                self.locomotion.set_motion(13)  # 左移 motion_id=13
+                                time.sleep(0.25)
+                            else:
+                                # 左右已对称，判断前后
+                                if front_dist > 0.3 and not likely_at_finish:
+                                    # 还没到终点区，继续前进
+                                    print(f"    前距{front_dist:.3f}m，继续前进")
+                                    self.locomotion.set_motion(16)
+                                    time.sleep(0.2)
+                                else:
+                                    # 已在终点区附近
+                                    if not likely_at_finish:
+                                        print(f"    靠近终点，继续微前进")
+                                        self.locomotion.set_motion(16)
+                                        time.sleep(0.15)
+                                    else:
+                                        print(f"    已在终点区，停止")
+                                        self.locomotion.set_motion(1)
+                                        time.sleep(0.3)
+
+                            time.sleep(0.2)
+                        else:
+                            break
+                    else:
+                        print(f"  ⚠ LiDAR无数据，停止定位")
                         self.locomotion.set_motion(1)
                         time.sleep(0.5)
-                        adjustment_count += 1
-                    else:
-                        # 没有LiDAR数据，停止微调
-                        print(f"  LiDAR数据不可用，停止微调")
-                        self.locomotion.set_motion(1)
-                        time.sleep(1.0)
                         break
 
                 except Exception as e:
@@ -573,6 +601,6 @@ class Enter_Finish_Circle_Precise(Basic_State):
 
             self.locomotion.set_motion(1)
             time.sleep(0.5)
-            print(f"{self.name}: 精确定位完成")
+            print(f"{self.name}: ✓ 定位完成，准备趴下")
         finally:
             self._ros2_manager.shutdown()
