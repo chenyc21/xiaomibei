@@ -16,7 +16,7 @@ class Stage6_Final(State):
     3. 接近足球
     4. 快速冲撞足球（连续撞击踢飞）
     5. 原地转身180° + 前进（绝对位置导航）
-    6. 利用LiDAR左右距离居中（进入50cm正方形区域）
+    6. 利用LiDAR+黄色边沿定位终点区（进入50cm正方形区域）
     7. 趴下结算
     """
 
@@ -29,23 +29,23 @@ class Stage6_Final(State):
             Standing(1.0),
             
             # 2. 搜索足球 - 原地旋转扫描，用摄像头确认黑白球
-            Search_Football(30.0),
+            Search_Football(35.0),
             Standing(1.0),
             
             # 3. 接近足球 - 视觉引导，慢速前进接近
-            Approach_Football(25.0),
+            Approach_Football(30.0),
             Standing(1.0),
             
-            # 4. 快速冲撞足球 - 全速撞击，可连续多次
-            Rush_And_Kick_Football(8.0),
+            # 4. 快速冲撞足球 - 全速撞击，可连续多次，改进的踢飞检测
+            Rush_And_Kick_Football(12.0),
             Standing(2.0),
             
             # 5. 基于绝对位置导航返回终点 - 转身180°+前进
-            Navigate_To_Finish_By_Position(15.0),
+            Navigate_To_Finish_By_Position(18.0),
             Standing(1.0),
             
-            # 6. 精确进入终点正方形区域 - 用LiDAR左右距离校准居中
-            Enter_Finish_Circle_Precise(12.0),
+            # 6. 精确进入终点正方形区域 - 用LiDAR+黄色边沿校准居中
+            Enter_Finish_Circle_Precise(15.0),
             Standing(1.0),
             
             # 7. 趴下结算
