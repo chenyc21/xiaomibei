@@ -1,0 +1,22 @@
+syntax = "proto3";
+package cyberdog_controller;
+
+import "google/protobuf/any.proto";
+
+message PathData {
+  message TrackPoint {
+    int32 x = 1;
+    int32 y = 2;
+  }
+
+  message FarthestInfo {
+    TrackPoint point = 1;
+    int32 distance = 2;
+    bool is_horizontal = 3;
+  }
+
+  TrackPoint left_top = 1;
+  TrackPoint right_top = 2;
+  TrackPoint front_mid = 3;
+  FarthestInfo farthest = 4;
+}

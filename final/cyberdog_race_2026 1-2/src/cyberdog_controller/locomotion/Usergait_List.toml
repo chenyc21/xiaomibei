@@ -1,0 +1,395 @@
+[[step]]
+mode = 0   #急停0，允许切换到站立，绝对姿态和相对姿态，受控趴下，杂技
+gait_id = 0
+contact = 0
+life_count = 0 #Fake value
+vel_des = [ 0.0, 0.0, 0.0,]
+rpy_des = [ 0.0, 0.0, 0.0,]
+pos_des = [ 0.0, 0.0, 0.0,]
+acc_des = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+ctrl_point = [ 0.0, 0.0, 0.0,]
+foot_pose = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+step_height = [ 0.0, 0.0,]
+value = 0
+duration = 0  
+
+[[step]]
+mode = 12   #站立1，可切换到任意状态,进入时发现倾倒，进入自动翻身模式
+gait_id = 0
+contact = 15
+life_count = 0 #Fake value
+vel_des = [ 0.0, 0.0, 0.0,]
+rpy_des = [ 0.0, 0.0, 0.0,]
+pos_des = [ 0.0, 0.0, 0.0,]
+acc_des = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+ctrl_point = [ 0.0, 0.0, 0.0,]
+foot_pose = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+step_height = [ 0.0, 0.0,]
+value = 0
+duration = 0  
+
+[[step]]
+mode = 3   #姿态展示2
+gait_id = 0
+contact = 15 #0b00001111表示四条腿着地状态
+life_count = 0 #Fake value
+vel_des = [ 0.0, 0.0, 0.0,]
+rpy_des = [ 0.0, 0.0, 0.0,]     #横滚，俯仰，偏航   机身期望姿态角          -0.52~0.52,-0.25~0.3,-0.65~0.65
+pos_des = [ 0.0, 0.0, 0.0,]     #前后，左右，上下[相对，相对，绝对]   机身期望位置   高度范围0.15~0.32,  默认0.235m
+acc_des = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+ctrl_point = [ 0.0, 0.0, 0.0,]
+foot_pose = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+step_height = [ 0.0, 0.0,]
+value = 0
+duration = 0  
+
+[[step]]
+mode = 7   #受控趴下3
+gait_id = 1
+contact = 0
+life_count = 0 #Fake value
+vel_des = [ 0.0, 0.0, 0.0,]
+rpy_des = [ 0.0, 0.0, 0.0,]
+pos_des = [ 0.0, 0.0, 0.0,]
+acc_des = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+ctrl_point = [ 0.0, 0.0, 0.0,]
+foot_pose = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+step_height = [ 0.0, 0.0,]
+value = 0
+duration = 0  
+
+[[step]]
+mode = 7   #高阻尼趴下4
+gait_id = 0
+contact = 0
+life_count = 0 #Fake value
+vel_des = [ 0.0, 0.0, 0.0,]
+rpy_des = [ 0.0, 0.0, 0.0,]
+pos_des = [ 0.0, 0.0, 0.0,]
+acc_des = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+ctrl_point = [ 0.0, 0.0, 0.0,]
+foot_pose = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+step_height = [ 0.0, 0.0,]
+value = 0
+duration = 0  
+
+[[step]]
+mode = 11   #动作类
+gait_id = 27 #慢走前进5
+contact = 15 
+life_count = 0 #Fake value
+vel_des = [ 0.15, 0.0, 0.0,]     
+rpy_des = [ 0.0, 0.0, 0.0,]     
+pos_des = [ 0.0, 0.0, 0.0,]
+acc_des = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.1,]
+ctrl_point = [ 0.0, 0.0, 0.0,]
+foot_pose = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+step_height = [ 0.02,0.02] 
+value = 0
+duration = 0  
+
+[[step]]
+mode = 11   #动作类
+gait_id = 27 #慢走后退6
+contact = 15
+life_count = 0 #Fake value
+vel_des = [ -0.2, 0.0, 0.0,]     
+rpy_des = [ 0.00, 0.2, 0.0,]     
+pos_des = [ 0.0, 0.0, 0.0,]
+acc_des = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+ctrl_point = [ 0.0, 0.0, 0.0,]
+foot_pose = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+step_height = [ 0.04, 0.06,]
+value = 0
+duration = 0  
+
+[[step]]
+mode = 11   #动作类
+gait_id = 27
+contact = 15
+life_count = 0 #Fake value
+vel_des = [ 0.0, 0.20, 0.0,]     #向左侧移7
+
+rpy_des = [ 0.0, 0.0, 0.0,]     
+pos_des = [ 0.0, 0.0, 0.0,]
+acc_des = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+ctrl_point = [ 0.0, 0.0, 0.0,]
+foot_pose = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+step_height = [ 0.03, 0.03,]
+value = 0
+duration = 0  
+
+[[step]]
+mode = 11   #动作类
+gait_id = 27
+contact = 15
+life_count = 0 #Fake value
+vel_des = [ 0.0, -0.2, 0.0,]     #向右侧移8
+rpy_des = [ 0.0, 0.0, 0.0,]     
+pos_des = [ 0.0, 0.0, 0.0,]
+acc_des = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+ctrl_point = [ 0.0, 0.0, 0.0,]
+foot_pose = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+step_height = [ 0.03, 0.03,]
+value = 0
+duration = 0  
+
+[[step]]
+mode = 11   #动作类
+gait_id = 27
+contact = 15
+life_count = 0 #Fake value
+vel_des = [ 0.0, 0.0, 0.30,]     #逆时针原地旋转9
+rpy_des = [ 0.0, 0.0, 0.0,]     
+pos_des = [ 0.0, 0.0, 0.0,]
+acc_des = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+ctrl_point = [ 0.0, 0.0, 0.0,]
+foot_pose = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+step_height = [ 0.03, 0.03,]
+value = 0
+duration = 0  
+
+[[step]]
+mode = 11   #动作类
+gait_id = 27
+contact = 15
+life_count = 0 #Fake value
+#vel_des = [ 0.0, 0.0, -0.30,]     #顺时针原地旋转10
+vel_des = [ 0.0, 0.0, -0.30,]     #顺时针原地旋转10
+rpy_des = [ 0.0, 0.0, 0.0,]     
+pos_des = [ 0.0, 0.0, 0.0,]
+acc_des = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+ctrl_point = [ 0.0, 0.0, 0.0,]
+foot_pose = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+step_height = [ 0.03, 0.03,]
+value = 0
+duration = 0  
+
+[[step]]
+mode = 11   #动作类
+gait_id = 27
+contact = 15
+life_count = 0 #Fake value
+vel_des = [ 0.0, 0.0, 0.15,]     #逆时针慢速原地旋转11
+rpy_des = [ 0.0, 0.0, 0.0,]     
+pos_des = [ 0.0, 0.0, 0.0,]
+acc_des = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+ctrl_point = [ 0.0, 0.0, 0.0,]
+foot_pose = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+step_height = [ 0.03, 0.03,]
+value = 0
+duration = 0  
+
+[[step]]
+mode = 11   #动作类
+gait_id = 27
+contact = 15
+life_count = 0 #Fake value
+vel_des = [ 0.0, 0.0, -0.15,]     #顺时针慢原地旋转12
+rpy_des = [ 0.0, 0.0, 0.0,]     
+pos_des = [ 0.0, 0.0, 0.0,]
+acc_des = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+ctrl_point = [ 0.0, 0.0, 0.0,]
+foot_pose = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+step_height = [ 0.03, 0.03,]
+value = 0
+duration = 0  
+
+[[step]]
+mode = 11   #动作类
+gait_id = 27
+contact = 15
+life_count = 0 #Fake value
+vel_des = [ 0.0, 0.09, 0.0,]     #向左慢侧移13
+
+rpy_des = [ 0.0, 0.0, 0.0,]     
+pos_des = [ 0.0, 0.0, 0.0,]
+acc_des = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+ctrl_point = [ 0.0, 0.0, 0.0,]
+foot_pose = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+step_height = [ 0.03, 0.03,]
+value = 0
+duration = 0  
+
+[[step]]
+mode = 11   #动作类
+gait_id = 27
+contact = 15
+life_count = 0 #Fake value
+vel_des = [ 0.0, -0.09, 0.0,]     #向右慢侧移14
+rpy_des = [ 0.0, 0.0, 0.0,]     
+pos_des = [ 0.0, 0.0, 0.0,]
+acc_des = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+ctrl_point = [ 0.0, 0.0, 0.0,]
+foot_pose = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+step_height = [ 0.03, 0.03,]
+value = 0
+duration = 0   
+
+[[step]]
+mode = 11   #动作类
+gait_id = 27
+contact = 15 #顺时针曲线15
+life_count = 0 #Fake value
+vel_des = [ 0.3, 0.0, -0.535,]     
+rpy_des = [ 0.0, 0.0, 0.0,]     
+pos_des = [ 0.0, 0.0, 0.0,]
+acc_des = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+ctrl_point = [ 0.0, 0.0, 0.0,]
+foot_pose = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+step_height = [ 0.03, 0.03,]
+value = 0
+duration = 0
+
+[[step]]
+mode = 11   #动作类
+gait_id = 27 #慢走前进 16
+contact = 15 
+life_count = 0 #Fake value
+vel_des = [ 0.08, 0.0, 0.0,]
+rpy_des = [ 0.0, 0.0, 0.0,]
+pos_des = [ 0.0, 0.0, 0.30,]
+acc_des = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+ctrl_point = [ 0.0, 0.0, 0.0,]
+foot_pose = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+step_height = [ 0.50, 0.50,]
+value = 3
+duration = 0
+
+[[step]]
+mode = 11   #动作类
+gait_id = 10
+contact = 15 #小跑17
+life_count = 0 #Fake value
+vel_des = [ 1.6, 0.0, 0.0,]     
+rpy_des = [ 0.0, 0.0, 0.0,]     
+pos_des = [ 0.0, 0.0, 0.15,]
+acc_des = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+ctrl_point = [ 0.0, 0.0, 0.0,]
+foot_pose = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+step_height = [ 0.12, 0.12,]
+value = 0
+duration = 0  
+
+[[step]]
+mode = 11   #动作类
+gait_id = 27
+contact = 15 #逆时针曲线18
+life_count = 0 #Fake value
+vel_des = [ 0.3, 0.0, 0.535,]     
+rpy_des = [ 0.0, 0.0, 0.0,]     
+pos_des = [ 0.0, 0.0, 0.0,]
+acc_des = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+ctrl_point = [ 0.0, 0.0, 0.0,]
+foot_pose = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+step_height = [ 0.03, 0.03,]
+value = 0
+duration = 0
+
+
+[[step]]
+mode = 11
+gait_id = 122
+contact = 15 #斜坡步态19
+life_count = 0 #Fake value
+vel_des = [ 0.1, 0.0, 0.0,]     
+rpy_des = [ 0.0, -0.36, 0.0,]     
+pos_des = [ 0.0, 0.0, 0.0,]
+acc_des = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+ctrl_point = [ 0.0, 0.0, -0.15,]
+foot_pose = [ 0.0, 0.0, 0.0, 0.0, 0.05, 0.0,]
+step_height = [ 0.02, 0.02,]
+value = 0
+duration = 0
+
+
+[[step]]
+mode = 62 # User define gait
+gait_id = 110 #限高杆20
+contact = 15
+life_count = 0
+vel_des = [ 0.0, 0.0, 0.0,] # velocity of x y yaw
+rpy_des = [ 0.0, 0.0, 0.0,]
+pos_des = [ 0.0, 0.0, 0.0,]
+acc_des = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+ctrl_point = [ 0.0, 0.0, 0.0,]
+foot_pose = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+step_height = [ 0.0, 0.0,]
+value = 0
+duration = 0
+
+
+[[step]]
+mode = 21
+gait_id = 5 #绝对姿态
+contact = 15 #修正高度21
+life_count = 0 #Fake value
+vel_des = [ 0.0, 0.0, 0.0,]
+rpy_des = [ 0.0, 0.0, 0.0,]
+pos_des = [ 0.2, 0.2, 0.2,]
+acc_des = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+ctrl_point = [ 0.0, 0.0, 0.0,]
+foot_pose = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+step_height = [ 0.00, 0.00,]
+value = 0
+duration = 1000
+
+[[step]]
+mode = 11   #动作类 - 超高抬腿慢走（石板路专用）22
+gait_id = 27
+contact = 15
+life_count = 0 #Fake value
+vel_des = [ 0.06, 0.0, 0.0,]
+rpy_des = [ 0.0, 0.0, 0.0,]
+pos_des = [ 0.0, 0.0, 0.32,]
+acc_des = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+ctrl_point = [ 0.0, 0.0, 0.0,]
+foot_pose = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+step_height = [ 0.80, 0.80,]
+value = 3
+duration = 0
+
+[[step]]
+mode = 11   #动作类 - 中高抬腿前进（脱困恢复用）23
+gait_id = 27
+contact = 15
+life_count = 0 #Fake value
+vel_des = [ 0.10, 0.0, 0.0,]
+rpy_des = [ 0.0, 0.0, 0.0,]
+pos_des = [ 0.0, 0.0, 0.30,]
+acc_des = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+ctrl_point = [ 0.0, 0.0, 0.0,]
+foot_pose = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+step_height = [ 0.55, 0.55,]
+value = 3
+duration = 0
+
+[[step]]
+mode = 11   #动作类 - 极小后退（脱困专用）24
+gait_id = 27
+contact = 15
+life_count = 0 #Fake value
+vel_des = [ -0.08, 0.0, 0.0,]
+rpy_des = [ 0.00, 0.2, 0.0,]
+pos_des = [ 0.0, 0.0, 0.0,]
+acc_des = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+ctrl_point = [ 0.0, 0.0, 0.0,]
+foot_pose = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+step_height = [ 0.35, 0.35,]
+value = 0
+duration = 0
+
+[[step]]
+mode = 11   #动作类 - 极限高抬腿前进（大石头脱困专用）25
+gait_id = 27
+contact = 15
+life_count = 0 #Fake value
+vel_des = [ 0.05, 0.0, 0.0,]
+rpy_des = [ 0.0, 0.0, 0.0,]
+pos_des = [ 0.0, 0.0, 0.30,]
+acc_des = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+ctrl_point = [ 0.0, 0.0, 0.0,]
+foot_pose = [ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,]
+step_height = [ 1.00, 1.00,]
+value = 3
+duration = 0

@@ -1,0 +1,16 @@
+// 文件路径：cyberdog_controller/protos/mini_rpc.proto
+syntax = "proto3";
+package cyberdog_controller;
+
+import "google/protobuf/any.proto";
+
+message MiniRpcRequest {
+    string method = 1;
+    google.protobuf.Any args = 2;
+}
+
+message MiniRpcResponse {
+    int32 status = 1;
+    string info = 2; 
+    google.protobuf.Any data = 3;
+}

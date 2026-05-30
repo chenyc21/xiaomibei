@@ -1,0 +1,1798 @@
+from abc import ABC
+import time
+from ...locomotion import LocomotionController
+import threading
+from ...utils.ros2_manager import ros2_manager
+from ...camera.path_scanner import *
+
+class Basic_State(ABC):
+    def __init__(self):
+        self.name = "Basic_State"
+        self.motion_id = 0
+        self.duration = -1
+
+        self.locomotion = LocomotionController()
+        self._ros2_manager = ros2_manager
+
+    def execute(self):
+        self._ros2_manager.init()
+        sim_clock = self._ros2_manager.get_clock()
+
+        try:
+            print(f"Executing {self.name} with motion ID {self.motion_id} for duration {self.duration}")
+            
+            # 等待仿真时钟
+            _start_time = sim_clock.get_sim_time()
+            wait_count = 0
+            while _start_time is None:
+                if wait_count % 5 == 0:
+                    print(f"Waiting for /clock topic... (Attempt {wait_count})")
+                time.sleep(1.0)
+                _start_time = sim_clock.get_sim_time()
+                wait_count += 1
+                
+            start_time = _start_time.nanosec / 1e9 + _start_time.sec
+            current_time = start_time
+            
+            while True:
+                self.locomotion.set_motion(self.motion_id)
+                time.sleep(0.01)  # 发布频率
+                
+                _current_time = sim_clock.get_sim_time()
+                if _current_time:
+                    current_time = _current_time.nanosec / 1e9 + _current_time.sec
+                
+                if current_time - start_time >= self.duration:
+                    break
+            print(f"Finished executing {self.name} in {current_time - start_time:.2f} seconds")
+        finally:
+            self._ros2_manager.shutdown()
+
+
+
+class Standing_Up(Basic_State):
+    """
+    从趴下状态站起（2026赛题起点要求）
+    """
+    def __init__(self, duration=3):
+        super().__init__()
+        self.name = "Standing Up"
+        self.motion_id = 1 # 站立模式
+        self.duration = duration
+
+
+class Standing(Basic_State):
+    """
+    站立状态
+    """
+    def __init__(self, duration=0):
+        super().__init__()
+        self.name = "Standing"
+        self.motion_id = 1
+        self.duration = duration
+
+
+class Laying(Basic_State):
+    """
+    趴下状态（2026赛题起点要求）
+    """
+    def __init__(self, duration=0):
+        super().__init__()
+        self.name = "Laying"
+        self.motion_id = 3
+        self.duration = duration
+
+
+class Walking_to_Ball(Basic_State):
+    """
+    向橙色小球移动并撞击
+    """
+    def __init__(self, duration=15, target_color='orange'):
+        super().__init__()
+        self.name = f"Walking to {target_color} ball"
+        self.duration = duration
+        self.target_color = target_color
+        self.hit_threshold = 15 # 距离阈值
+
+    def execute(self):
+        from ...camera.ball_scanner import ball_scanner_main
+        from ...camera.path_scanner import check_camera_ready
+
+        if not check_camera_ready(timeout=1.0):
+            print(f"{self.name}: 摄像头不可用，跳过。")
+            return
+
+        print(f"Executing {self.name}")
+        self._ros2_manager.init()
+        sim_clock = self._ros2_manager.get_clock()
+
+        try:
+            _start_time = sim_clock.get_sim_time()
+            wait_count = 0
+            while _start_time is None:
+                if wait_count % 5 == 0:
+                    print(f"Waiting for /clock topic... (Attempt {wait_count})")
+                time.sleep(1.0)
+                _start_time = sim_clock.get_sim_time()
+                wait_count += 1
+            start_time = _start_time.nanosec / 1e9 + _start_time.sec
+
+            while True:
+                _current_time = sim_clock.get_sim_time()
+                current_time = _current_time.nanosec / 1e9 + _current_time.sec
+                if current_time - start_time >= self.duration:
+                    break
+
+                try:
+                    data = ball_scanner_main(timeout=1.0)
+                    if data and data.get('target_detected'):
+                        offset = data.get('center_offset', 0)
+                        dist = data.get('distance', 100)
+
+                        if dist < self.hit_threshold:
+                            print("Target ball hit!")
+                            self.locomotion.set_motion(5)
+                            time.sleep(1.0)
+                            break
+
+                        if offset > 15:
+                            self.locomotion.set_motion(12)
+                        elif offset < -15:
+                            self.locomotion.set_motion(11)
+                        else:
+                            self.locomotion.set_motion(5)
+                    else:
+                        self.locomotion.set_motion(11)
+                except Exception as e:
+                    print(f"Ball detection error: {str(e)}")
+                    break
+        finally:
+            self._ros2_manager.shutdown()
+
+class Spin_to_Find_Ball(Basic_State):
+    """
+    旋转寻找橙色小球
+    """
+    def __init__(self, duration=10):
+        super().__init__()
+        self.name = "Spin to find orange ball"
+        self.duration = duration
+
+    def execute(self):
+        from ...camera.ball_scanner import ball_scanner_main
+        from ...camera.path_scanner import check_camera_ready
+
+        if not check_camera_ready(timeout=1.0):
+            print(f"{self.name}: 摄像头不可用，无法搜索小球。跳过此步骤。")
+            return
+
+        print(f"Executing {self.name}")
+        self._ros2_manager.init()
+        sim_clock = self._ros2_manager.get_clock()
+
+        try:
+            _start_time = sim_clock.get_sim_time()
+            wait_count = 0
+            while _start_time is None:
+                if wait_count % 5 == 0:
+                    print(f"Waiting for /clock topic... (Attempt {wait_count})")
+                time.sleep(1.0)
+                _start_time = sim_clock.get_sim_time()
+                wait_count += 1
+            start_time = _start_time.nanosec / 1e9 + _start_time.sec
+
+            while True:
+                _current_time = sim_clock.get_sim_time()
+                current_time = _current_time.nanosec / 1e9 + _current_time.sec
+                if current_time - start_time >= self.duration:
+                    break
+
+                try:
+                    data = ball_scanner_main(timeout=1.0)
+                    if data and data.get('target_detected'):
+                        print("Orange ball spotted!")
+                        break
+                    else:
+                        self.locomotion.set_motion(11) # 左旋寻找
+                except Exception as e:
+                    print(f"Ball search error: {str(e)}")
+                    break
+        finally:
+            self._ros2_manager.shutdown()
+
+
+class Walking_Forward(Basic_State):
+    """
+    前进
+    """
+    def __init__(self, duration=0):
+        super().__init__()
+        self.name = "Walking Forward"
+        self.motion_id = 5
+        self.duration = duration
+
+class Walking_Forward_Slow(Basic_State):
+    """
+    前进，很慢很慢，正常速度1/2
+    """
+    def __init__(self, duration=0):
+        super().__init__()
+        self.name = "Walking Forward"
+        self.motion_id = 16
+        self.duration = duration
+
+class Walking_Forward_by_px(Basic_State):
+    '''
+    动态的根据目前视野最远点的距离，来判断停下的时间，传入参数是停下时最远点距离。
+    @param duration: 最大值，达不到要求时作用
+    @param px: 距离最远点的距离
+    '''
+    def __init__(self, duration, px):
+        super().__init__()
+        self.name = "Walking Forward by px"
+        self.duration = duration
+        self.px = px
+        self.flag = 0
+        
+
+    def execute(self):
+        print(f"Executing {self.name} with px threshold: {self.px}")
+        self._ros2_manager.init()
+        sim_clock = self._ros2_manager.get_clock()
+
+        try:
+            _start_time = sim_clock.get_sim_time()
+            wait_count = 0
+            while _start_time is None:
+                if wait_count % 5 == 0:
+                    print(f"Waiting for /clock topic... (Attempt {wait_count})")
+                time.sleep(1.0)
+                _start_time = sim_clock.get_sim_time()
+                wait_count += 1
+            start_time = _start_time.nanosec / 1e9 + _start_time.sec
+            current_time = start_time
+            while True:
+                time.sleep(0.01)
+                _current_time = sim_clock.get_sim_time()
+                current_time = _current_time.nanosec / 1e9 + _current_time.sec
+                    
+                if current_time - start_time >= self.duration:
+                    break
+                try:
+                    data = path_scanner_main(FarDistanceScanner, timeout=1.0)  # 动态调用
+                    distance = data.get('far_distance', 0)
+                    
+                    if distance > self.px:
+                        self.locomotion.set_motion(5)
+                        time.sleep(0.01)
+                    elif self.flag == 1:
+                        print(f"Finished executing {self.name} in {current_time - start_time:.2f} seconds")
+                        break
+
+                    if distance < self.px:
+                        self.flag = 1
+                except Exception as e:
+                    print(f"检测异常: {str(e)}")
+                    break
+        finally:
+            self._ros2_manager.shutdown()
+
+
+class Walking_Forward_by_rightbound(Basic_State):
+    '''
+    前进，检测右边界，前进至右边界小于设定值。这个也是曲线入口专用，
+    根据视野内右边界与赛道的距离判断,
+    注意不要和下面的Walking_Forward_by_bottom混淆，
+    这个是根据整个赛道判断的，下面的是根据底边相接赛道处判断的
+    '''
+    def __init__(self, duration,right_bound):
+        super().__init__()
+        self.name = "Walking Forward by rightbound"
+        self.duration = duration  
+        self.flag = 0
+        self.right_bound = right_bound
+
+    def execute(self):
+        print(f"Executing {self.name} with distance threshold: {self.duration}")
+        self._ros2_manager.init()
+        sim_clock = self._ros2_manager.get_clock()
+
+        try:
+            _start_time = sim_clock.get_sim_time()
+            wait_count = 0
+            while _start_time is None:
+                if wait_count % 5 == 0:
+                    print(f"Waiting for /clock topic... (Attempt {wait_count})")
+                time.sleep(1.0)
+                _start_time = sim_clock.get_sim_time()
+                wait_count += 1
+            start_time = _start_time.nanosec / 1e9 + _start_time.sec
+            current_time = start_time
+            while True:
+                time.sleep(0.01)
+                _current_time = sim_clock.get_sim_time()
+                current_time = _current_time.nanosec / 1e9 + _current_time.sec
+                if current_time - start_time >= self.duration:
+                    break
+                try:
+                    data = path_scanner_main(RightBoundaryScanner, timeout=1.0)  # 动态调用
+                    right_bound= data.get('right_boundary', 0)
+                    if self.right_bound <= right_bound:
+                        self.locomotion.set_motion(5)
+                        time.sleep(0.01)
+                    else : 
+                        print(f"Finished executing {self.name} in {current_time - start_time:.2f} seconds")
+                        break
+                except Exception as e:
+                    print(f"检测异常: {str(e)}")
+                    break
+        
+        finally:
+            self._ros2_manager.shutdown()
+
+class Walking_Stone_by_distance(Basic_State):
+    '''
+    限高杆->石板路的石板路
+    '''
+    def __init__(self, duration,distance):
+        super().__init__()
+        self.name = "Walking Forward by distance"
+        self.duration = duration  
+        self.flag = 0
+        self.distance = distance
+
+    def execute(self):
+        print(f"Executing {self.name} with distance threshold: {self.duration}")
+        self._ros2_manager.init()
+        sim_clock = self._ros2_manager.get_clock()
+
+        try:
+            _start_time = sim_clock.get_sim_time()
+            wait_count = 0
+            while _start_time is None:
+                if wait_count % 5 == 0:
+                    print(f"Waiting for /clock topic... (Attempt {wait_count})")
+                time.sleep(1.0)
+                _start_time = sim_clock.get_sim_time()
+                wait_count += 1
+            start_time = _start_time.nanosec / 1e9 + _start_time.sec
+            current_time = start_time
+            while True:
+                time.sleep(0.01)
+                _current_time = sim_clock.get_sim_time()
+                current_time = _current_time.nanosec / 1e9 + _current_time.sec
+                if current_time - start_time >= self.duration:
+                    break
+                try:
+                    data = path_scanner_main(CenterOffsetScanner, timeout=1.0)  # 动态调用
+                    distance= data.get('center_distance', 0)
+                    if distance <= self.distance :
+                        self.locomotion.set_motion(16)
+                        time.sleep(0.01)
+                    else : 
+                        print(f"Finished executing {self.name} in {current_time - start_time:.2f} seconds")
+                        break
+                except Exception as e:
+                    print(f"检测异常: {str(e)}")
+                    break
+        
+        finally:
+            self._ros2_manager.shutdown()
+
+class Walking_Forward_by_distance_z(Basic_State):
+    '''
+    使用离得最近的边线的距离，
+    @param duration: 最大值，达不到要求时作用
+    @param distance: 距离最近赛道的距离
+    '''
+    def __init__(self, duration,distance):
+        super().__init__()
+        self.name = "Walking Forward by distance"
+        self.duration = duration  
+        self.flag = 0
+        self.distance = distance
+
+    def execute(self):
+        print(f"Executing {self.name} with distance threshold: {self.duration}")
+        self._ros2_manager.init()
+        sim_clock = self._ros2_manager.get_clock()
+
+        try:
+            _start_time = sim_clock.get_sim_time()
+            wait_count = 0
+            while _start_time is None:
+                if wait_count % 5 == 0:
+                    print(f"Waiting for /clock topic... (Attempt {wait_count})")
+                time.sleep(1.0)
+                _start_time = sim_clock.get_sim_time()
+                wait_count += 1
+            start_time = _start_time.nanosec / 1e9 + _start_time.sec
+            current_time = start_time
+            while True:
+                time.sleep(0.01)
+                _current_time = sim_clock.get_sim_time()
+                current_time = _current_time.nanosec / 1e9 + _current_time.sec
+                if current_time - start_time >= self.duration:
+                    break
+                try:
+                    data = path_scanner_main(CenterOffsetScanner, timeout=1.0)  # 动态调用
+                    distance= data.get('center_distance', 0)
+                    if  self.distance < distance:
+                        self.locomotion.set_motion(5)
+                        time.sleep(0.01)
+                    elif distance == 0 : 
+                        print(f"Finished executing {self.name} in {current_time - start_time:.2f} seconds")
+                        break
+                    else : 
+                        print(f"Finished executing {self.name} in {current_time - start_time:.2f} seconds")
+                        break
+                except Exception as e:
+                    print(f"检测异常: {str(e)}")
+                    break
+        
+        finally:
+            self._ros2_manager.shutdown()
+
+
+class Walking_Slope_by_distance(Basic_State):
+    '''
+    走斜坡，动态调整走坡时间
+    '''
+    def __init__(self, duration,distance):
+        super().__init__()
+        self.name = "Walking Forward by distance"
+        self.duration = duration  
+        self.flag = 0
+        self.distance = distance
+
+    def execute(self):
+        print(f"Executing {self.name} with distance threshold: {self.duration}")
+        self._ros2_manager.init()
+        sim_clock = self._ros2_manager.get_clock()
+
+        try:
+            _start_time = sim_clock.get_sim_time()
+            wait_count = 0
+            while _start_time is None:
+                if wait_count % 5 == 0:
+                    print(f"Waiting for /clock topic... (Attempt {wait_count})")
+                time.sleep(1.0)
+                _start_time = sim_clock.get_sim_time()
+                wait_count += 1
+            start_time = _start_time.nanosec / 1e9 + _start_time.sec
+            current_time = start_time
+            while True:
+                time.sleep(0.01)
+                _current_time = sim_clock.get_sim_time()
+                current_time = _current_time.nanosec / 1e9 + _current_time.sec
+                if current_time - start_time >= self.duration:
+                    break
+                try:
+                    data = path_scanner_main(CenterOffsetScanner, timeout=1.0)  # 动态调用
+                    distance= data.get('center_distance', 0)
+                    offset = data.get('center_offset', 0)
+                    if distance <= self.distance or distance == None:
+                        self.locomotion.set_motion(19)
+                        time.sleep(0.01)
+                        self.flag = 0
+                    elif self.flag == 1: 
+                        print(f"Finished executing {self.name} in {current_time - start_time:.2f} seconds")
+                        break
+                    if distance > self.distance and offset != 0 and offset < 50 and offset > -50:
+                        self.flag = 1
+                except Exception as e:
+                    print(f"检测异常: {str(e)}")
+                    break
+        
+        finally:
+            self._ros2_manager.shutdown()
+
+
+
+class Spin_by_line(Basic_State):
+    '''
+    原地旋转，根据眼前横向（小于10度）线条判断，然后决定旋转方向，顺、逆旋转至横线小于1.5度。
+    如果摄像头不可用，快速退出（不做大角度旋转），由外层 Stage 的 Spin_Left 负责实际转弯。
+    '''
+    def __init__(self, duration):
+        super().__init__()
+        self.name = "Spin by line"
+        self.duration = duration
+        self.flag = 0
+
+    def execute(self):
+        # 先检查摄像头是否可用
+        from ...camera.path_scanner import check_camera_ready
+        camera_ok = check_camera_ready(timeout=1.5)
+
+        if not camera_ok:
+            print(f"{self.name}: 摄像头不可用，跳过视觉对齐（转弯由外层 Spin_Left 负责）。")
+            return
+
+        print(f"Executing {self.name} with distance threshold: {self.duration}")
+        self._ros2_manager.init()
+        sim_clock = self._ros2_manager.get_clock()
+
+        try:
+            _start_time = sim_clock.get_sim_time()
+            wait_count = 0
+            while _start_time is None:
+                if wait_count % 5 == 0:
+                    print(f"Waiting for /clock topic... (Attempt {wait_count})")
+                time.sleep(1.0)
+                _start_time = sim_clock.get_sim_time()
+                wait_count += 1
+            start_time = _start_time.nanosec / 1e9 + _start_time.sec
+            current_time = start_time
+
+            no_line_count = 0
+            while True:
+                time.sleep(0.02)
+                _current_time = sim_clock.get_sim_time()
+                current_time = _current_time.nanosec / 1e9 + _current_time.sec
+                if current_time - start_time >= self.duration:
+                    print(f"{self.name}: 视觉对齐超时（{self.duration}s），停止搜索。")
+                    break
+                try:
+                    data = path_scanner_main(HorizontalLineScanner, timeout=1.0)
+                    is_horizontal_line = data.get('is_horizontal_line', -1) if data else -1
+
+                    if is_horizontal_line == 2:
+                        self.locomotion.set_motion(12)
+                        no_line_count = 0
+                    elif is_horizontal_line == 1:
+                        self.locomotion.set_motion(11)
+                        no_line_count = 0
+                    elif is_horizontal_line == 3:
+                        print(f"水平线已对齐！完成 {self.name} in {current_time - start_time:.2f}s")
+                        break
+                    else:
+                        no_line_count += 1
+                        if no_line_count <= 3:
+                            print("Spinning... searching for horizontal line.")
+                        self.locomotion.set_motion(11)
+                except Exception as e:
+                    print(f"检测异常: {str(e)}")
+                    break
+        finally:
+            self._ros2_manager.shutdown()
+
+
+class Walking_by_black_bar(Basic_State):
+    '''
+    石板路->限高杆，根据限高杆走
+    '''
+    def __init__(self, duration):
+        super().__init__()
+        self.name = "Spin by black bar"
+        self.duration = duration
+        self.flag = 0
+
+    def execute(self):
+        print(f"Executing {self.name} with distance threshold: {self.duration}")
+        
+        self._ros2_manager.init()
+        sim_clock = self._ros2_manager.get_clock()
+
+        try:
+            _start_time = sim_clock.get_sim_time()
+            wait_count = 0
+            while _start_time is None:
+                if wait_count % 5 == 0:
+                    print(f"Waiting for /clock topic... (Attempt {wait_count})")
+                time.sleep(1.0)
+                _start_time = sim_clock.get_sim_time()
+                wait_count += 1
+            start_time = _start_time.nanosec / 1e9 + _start_time.sec
+            current_time = start_time
+
+            while True:
+                time.sleep(0.01)
+                _current_time = sim_clock.get_sim_time()
+                current_time = _current_time.nanosec / 1e9 + _current_time.sec
+                if current_time - start_time >= self.duration:
+                    break
+                try:
+                    data = path_scanner_main(BlackBarScanner, timeout=1.0)  # 动态调用
+                    is_horizontal_line= data.get('is_horizontal_bar', 0)
+                    if is_horizontal_line == -1:
+                        print(f"Finished executing {self.name} in {current_time - start_time:.2f} seconds")
+                        break
+                    else :
+                        self.locomotion.set_motion(5)
+                    
+                except Exception as e:
+                    print(f"检测异常: {str(e)}")
+                    break
+        finally:
+            sim_clock.destroy_node()
+            self._ros2_manager.shutdown()   
+
+class Walking_Backward(Basic_State):
+    """
+    后退
+    """
+    def __init__(self, duration=0):
+        super().__init__()
+        self.name = "Walking Backward"
+        self.motion_id = 6
+        self.duration = duration
+
+
+class Walking_Backward_by_distance(Basic_State):
+    '''
+    后退，根据目前视野最远点的距离，来判断停下的时间，传入参数是停下时最远点距离。
+    '''
+    def __init__(self, duration,distance):
+        super().__init__()
+        self.name = "Walking Forward by distance"
+        self.duration = duration  
+        self.flag = 0
+        self.distance = distance
+
+    def execute(self):
+        print(f"Executing {self.name} with distance threshold: {self.duration}")
+        self._ros2_manager.init()
+        sim_clock = self._ros2_manager.get_clock()
+
+        try:
+            _start_time = sim_clock.get_sim_time()
+            wait_count = 0
+            while _start_time is None:
+                if wait_count % 5 == 0:
+                    print(f"Waiting for /clock topic... (Attempt {wait_count})")
+                time.sleep(1.0)
+                _start_time = sim_clock.get_sim_time()
+                wait_count += 1
+            start_time = _start_time.nanosec / 1e9 + _start_time.sec
+            current_time = start_time
+            while True:
+                time.sleep(0.01)
+                _current_time = sim_clock.get_sim_time()
+                current_time = _current_time.nanosec / 1e9 + _current_time.sec
+                if current_time - start_time >= self.duration:
+                    break
+                try:
+                    data = path_scanner_main(CenterOffsetScanner, timeout=1.0)  # 动态调用
+                    distance= data.get('center_distance', 0)
+                    offset = data.get('center_offset', 0)
+                    if distance <= self.distance or distance == None:
+                        self.locomotion.set_motion(6)
+                        time.sleep(0.01)
+                        self.flag = 0
+                    elif self.flag == 1: 
+                        print(f"Finished executing {self.name} in {current_time - start_time:.2f} seconds")
+                        break
+                    if distance > self.distance and offset != 0 and offset < 50 and offset > -50:
+                        self.flag = 1
+                except Exception as e:
+                    print(f"检测异常: {str(e)}")
+                    break
+        
+        finally:
+            self._ros2_manager.shutdown()
+
+class Shift_Left(Basic_State):
+    """
+    向左平移，非前进左转
+    """
+    def __init__(self, duration=0):
+        super().__init__()
+        self.name = "Shift Left"
+        self.motion_id = 7
+        self.duration = duration
+    
+class Shift_Left_by_bottom(Basic_State):
+    def __init__(self, duration , distance ):
+        """
+        向左平移，非前进左转，目前是曲线入口专用，根据视野内底边赛道与左边界的距离判断
+        """
+        super().__init__()
+        self.name = "Shift Left by bottom"
+        self.motion_id = 7
+        self.duration = duration
+        self.distance = distance
+
+    def execute(self):
+        print(f"Executing {self.name} with distance threshold: {self.distance}")
+        
+        self._ros2_manager.init()
+        sim_clock = self._ros2_manager.get_clock()
+
+        try:
+            _start_time = sim_clock.get_sim_time()
+            wait_count = 0
+            while _start_time is None:
+                if wait_count % 5 == 0:
+                    print(f"Waiting for /clock topic... (Attempt {wait_count})")
+                time.sleep(1.0)
+                _start_time = sim_clock.get_sim_time()
+                wait_count += 1
+            start_time = _start_time.nanosec / 1e9 + _start_time.sec
+            current_time = start_time
+            while True:
+                time.sleep(0.01)
+                _current_time = sim_clock.get_sim_time()
+                current_time = _current_time.nanosec / 1e9 + _current_time.sec
+                if current_time - start_time >= self.duration:
+                    break
+                try:
+                    data = path_scanner_main(BottomLeftScanner  , timeout=1.0)  # 动态调用
+                    distance = data.get('left_bottom_distance', 0)
+                    if distance <= self.distance and distance != 0:
+                        self.locomotion.set_motion(13)
+                        time.sleep(0.01)
+                    else : 
+                        print(f"Finished executing {self.name} in {current_time - start_time:.2f} seconds")
+                        break
+                except Exception as e:
+                    print(f"检测异常: {str(e)}")
+                break
+        finally:
+            self._ros2_manager.shutdown()
+            
+class Shift_Right_by_bottom(Basic_State):
+    def __init__(self, duration , distance):
+        """
+        向右平移，非前进右转，目前是曲线入口专用，根据视野内底边赛道与右边界的距离判断
+        """
+        super().__init__()
+        self.name = "Shift Right by bottom"
+        self.motion_id = 8
+        self.duration = duration
+        self.distance = distance
+
+    def execute(self):
+        print(f"Executing {self.name} with distance threshold: {self.distance}")
+       
+        self._ros2_manager.init()
+        sim_clock = self._ros2_manager.get_clock()
+
+        try:
+            _start_time = sim_clock.get_sim_time()
+            wait_count = 0
+            while _start_time is None:
+                if wait_count % 5 == 0:
+                    print(f"Waiting for /clock topic... (Attempt {wait_count})")
+                time.sleep(1.0)
+                _start_time = sim_clock.get_sim_time()
+                wait_count += 1
+            start_time = _start_time.nanosec / 1e9 + _start_time.sec
+            current_time = start_time
+            while True:
+                time.sleep(0.01)
+                _current_time = sim_clock.get_sim_time()
+                current_time = _current_time.nanosec / 1e9 + _current_time.sec
+                if current_time - start_time >= self.duration:
+                    break
+                try:
+                    data = path_scanner_main(BottomLeftScanner  , timeout=1.0)  # 动态调用
+                    distance = data.get('left_bottom_distance', 0)
+                    if distance >= self.distance:
+                        self.locomotion.set_motion(8)
+                    else: 
+                        print(f"Finished executing {self.name} in {current_time - start_time:.2f} seconds")
+                        break
+                except Exception as e:
+                    print(f"检测异常: {str(e)}")
+                    break
+        finally:
+            self._ros2_manager.shutdown()
+
+class Shift_Right(Basic_State):
+    """
+    向右平移，非前进右转
+    """
+    def __init__(self, duration=0):
+        super().__init__()
+        self.name = "Shift Right"
+        self.motion_id = 8
+        self.duration = duration
+
+class Shift_by_angle(Basic_State):
+    '''
+    有调整的原地向右转
+    '''
+    def __init__(self, duration):
+        super().__init__()
+        self.name = "Shift by angle"
+        self.motion_id = 7
+        self.duration = duration
+        self.flag = 0
+
+    def execute(self):
+        print(f"Executing {self.name}")
+        self._ros2_manager.init()
+        sim_clock = self._ros2_manager.get_clock()
+
+        try:
+            _start_time = sim_clock.get_sim_time()
+            wait_count = 0
+            while _start_time is None:
+                if wait_count % 5 == 0:
+                    print(f"Waiting for /clock topic... (Attempt {wait_count})")
+                time.sleep(1.0)
+                _start_time = sim_clock.get_sim_time()
+                wait_count += 1
+            start_time = _start_time.nanosec / 1e9 + _start_time.sec
+            current_time = start_time
+            while True:
+                time.sleep(0.01)
+                _current_time = sim_clock.get_sim_time()
+                current_time = _current_time.nanosec / 1e9 + _current_time.sec
+                if current_time - start_time >= self.duration:
+                    break
+                try:
+                    data = path_scanner_main(CenterOffsetScanner, timeout=1.0)  # 动态调用
+                    distance_to_center = data.get('center_offset', 0)
+                    if distance_to_center <= 3 and distance_to_center >= -3:
+                        print(f"Finished executing {self.name} in {current_time - start_time:.2f} seconds")
+                        break
+                    if distance_to_center < -3 :
+                        self.locomotion.set_motion(13)
+                        time.sleep(0.01)
+                    if distance_to_center > 3:
+                        self.locomotion.set_motion(14)
+                        time.sleep(0.01)
+                except Exception as e:
+                    print(f"检测异常: {str(e)}")
+                    break
+        finally:
+            self._ros2_manager.shutdown()
+
+class Spin_Left(Basic_State):
+    """
+    原地向左转
+    """
+    def __init__(self, duration=0):
+        super().__init__()
+        self.name = "Spin Left"
+        self.motion_id = 9
+        self.duration = duration
+
+
+class Spin_Right(Basic_State):
+    """
+    原地向右转
+    """
+    def __init__(self, duration=0):
+        super().__init__()
+        self.name = "Spin Right"
+        self.motion_id = 10
+        self.duration = duration
+
+class Spin_by_angle(Basic_State):
+    '''
+    有调整的原地向右转
+    '''
+    def __init__(self, duration):
+        super().__init__()
+        self.name = "Spin Right by angle"
+        self.motion_id = 10
+        self.duration = duration
+        self.flag = 0
+
+    def execute(self):
+        print(f"Executing {self.name}")
+        self._ros2_manager.init()
+        sim_clock = self._ros2_manager.get_clock()
+
+        try:
+            _start_time = sim_clock.get_sim_time()
+            wait_count = 0
+            while _start_time is None:
+                if wait_count % 5 == 0:
+                    print(f"Waiting for /clock topic... (Attempt {wait_count})")
+                time.sleep(1.0)
+                _start_time = sim_clock.get_sim_time()
+                wait_count += 1
+            start_time = _start_time.nanosec / 1e9 + _start_time.sec
+            current_time = start_time
+            while True:
+                time.sleep(0.01)
+                _current_time = sim_clock.get_sim_time()
+                current_time = _current_time.nanosec / 1e9 + _current_time.sec
+                if current_time - start_time >= self.duration:
+                    break
+                try:
+                    data = path_scanner_main(CenterOffsetScanner, timeout=1.0)  # 动态调用
+                    distance_to_center = data.get('center_offset', 0)
+
+                    if distance_to_center <= 5 and distance_to_center >= -5:
+                        print(f"Finished executing {self.name} in {current_time - start_time:.2f} seconds")
+                        break
+                    if distance_to_center <= -4 :
+                        self.locomotion.set_motion(11)
+                        time.sleep(0.01)
+                    if distance_to_center >= 4:
+                        self.locomotion.set_motion(12)
+                except Exception as e:
+                    print(f"检测异常: {str(e)}")
+                    break
+        finally:
+            self._ros2_manager.shutdown()
+
+class Spin_by_slope(Basic_State):
+    '''
+    坡底使用，旋转调整
+    '''
+    def __init__(self, duration):
+        super().__init__()
+        self.name = "Spin Slope by angle"
+        self.motion_id = 10
+        self.duration = duration
+        self.flag = 0
+
+    def execute(self):
+        print(f"Executing {self.name}")
+        self._ros2_manager.init()
+        sim_clock = self._ros2_manager.get_clock()
+
+        try:
+            _start_time = sim_clock.get_sim_time()
+            wait_count = 0
+            while _start_time is None:
+                if wait_count % 5 == 0:
+                    print(f"Waiting for /clock topic... (Attempt {wait_count})")
+                time.sleep(1.0)
+                _start_time = sim_clock.get_sim_time()
+                wait_count += 1
+            start_time = _start_time.nanosec / 1e9 + _start_time.sec
+            current_time = start_time
+            while True:
+                time.sleep(0.01)
+                _current_time = sim_clock.get_sim_time()
+                current_time = _current_time.nanosec / 1e9 + _current_time.sec
+                if current_time - start_time >= self.duration:
+                    break
+                try:
+                    data = path_scanner_main(SlopeScanner, timeout=1.0)  # 动态调用
+                    distance_to_center = data.get('center_offset', 0)
+
+                    if distance_to_center < 9 and distance_to_center > -9:
+                        print(f"Finished executing {self.name} in {current_time - start_time:.2f} seconds")
+                        break
+                    if distance_to_center <= -8 :
+                        self.locomotion.set_motion(11)
+                        time.sleep(0.01)
+                    if distance_to_center >= 8:
+                        self.locomotion.set_motion(12)
+                except Exception as e:
+                    print(f"检测异常: {str(e)}")
+                    break
+        finally:
+            self._ros2_manager.shutdown()
+
+class Shift_by_slope(Basic_State):
+    '''
+    坡底使用，平移调整
+    '''
+    def __init__(self, duration):
+        super().__init__()
+        self.name = "Shift Slope by angle"
+        self.motion_id = 10
+        self.duration = duration
+        self.flag = 0
+
+    def execute(self):
+        print(f"Executing {self.name}")
+        self._ros2_manager.init()
+        sim_clock = self._ros2_manager.get_clock()
+
+        try:
+            _start_time = sim_clock.get_sim_time()
+            wait_count = 0
+            while _start_time is None:
+                if wait_count % 5 == 0:
+                    print(f"Waiting for /clock topic... (Attempt {wait_count})")
+                time.sleep(1.0)
+                _start_time = sim_clock.get_sim_time()
+                wait_count += 1
+            start_time = _start_time.nanosec / 1e9 + _start_time.sec
+            current_time = start_time
+            while True:
+                time.sleep(0.01)
+                _current_time = sim_clock.get_sim_time()
+                current_time = _current_time.nanosec / 1e9 + _current_time.sec
+                if current_time - start_time >= self.duration:
+                    break
+                try:
+                    data = path_scanner_main(SlopeScanner, timeout=1.0)  # 动态调用
+                    distance_to_center = data.get('center_offset', 0)
+
+                    if distance_to_center < 12 and distance_to_center > -12:
+                        print(f"Finished executing {self.name} in {current_time - start_time:.2f} seconds")
+                        break
+                    if distance_to_center <= -13 :
+                        self.locomotion.set_motion(13)
+                        time.sleep(0.01)
+                    if distance_to_center >= 13:
+                        self.locomotion.set_motion(14)
+                except Exception as e:
+                    print(f"检测异常: {str(e)}")
+                    break
+        finally:
+            self._ros2_manager.shutdown()
+
+class Walking_Forward_Robust(Basic_State):
+    """
+    更健壮的前进状态：
+    1. 增加黄色边界线避障（防止踩线/越线）
+    2. 增加卡死检测（冗余逻辑）
+    3. 增加自动脱困（后退/侧移）
+    4. 无视觉数据时也能可靠前进
+    """
+    def __init__(self, duration=30, motion_id=16, target_distance=0):
+        super().__init__()
+        self.name = "Walking Forward Robust"
+        self.duration = duration
+        self.motion_id = motion_id
+        self.target_distance = target_distance
+
+        # 边界控制参数
+        self.safe_margin = 40
+        self.critical_margin = 5  # 进一步降低灵敏度，石板路上允许一定的晃动        self.steering_threshold = 15
+
+        # 卡死检测参数
+        self.stuck_check_interval = 8.0 # 给予极高容错，适应颠簸
+        self.stuck_dist_threshold = 3
+        self.last_dist = -1
+        self.last_check_time = 0
+        self.stuck_count = 0
+
+        # 无视觉时的盲走参数
+        self.blind_walk_start = 0
+        self.last_pos_x = 0  # 用于基于位置的卡死检测（无视觉时）
+
+    def execute(self):
+        print(f"Executing {self.name} with motion_id {self.motion_id}")
+
+        # 先检查摄像头状态
+        from ...camera.path_scanner import check_camera_ready
+        camera_ok = check_camera_ready(timeout=1.0)
+
+        self._ros2_manager.init()
+        sim_clock = self._ros2_manager.get_clock()
+
+        try:
+            _start_time = sim_clock.get_sim_time()
+            wait_count = 0
+            while _start_time is None:
+                if wait_count % 5 == 0:
+                    print(f"Waiting for /clock topic... (Attempt {wait_count})")
+                time.sleep(1.0)
+                _start_time = sim_clock.get_sim_time()
+                wait_count += 1
+            start_time = _start_time.nanosec / 1e9 + _start_time.sec
+            self.last_check_time = start_time
+            self.blind_walk_start = start_time
+            had_vision = False
+            blind_msg_count = 0
+
+            while True:
+                _current_time = sim_clock.get_sim_time()
+                current_time = _current_time.nanosec / 1e9 + _current_time.sec
+
+                if current_time - start_time >= self.duration:
+                    print("Duration reached, stopping.")
+                    break
+
+                try:
+                    if not camera_ok:
+                        # 摄像头不可用：纯盲走模式，使用预编程时序
+                        self.locomotion.set_motion(self.motion_id)
+                        time.sleep(0.1)
+                        if current_time - self.last_check_time > self.stuck_check_interval:
+                            self.last_check_time = current_time
+                        continue
+
+                    data = path_scanner_main(CenterOffsetScanner, timeout=1.0)
+
+                    # 检查是否识别到赛道
+                    left_edge = data.get('left_edge') if data else None
+                    right_edge = data.get('right_edge') if data else None
+                    has_track = (left_edge is not None) or (right_edge is not None)
+
+                    if not has_track:
+                        if had_vision:
+                            print(f"{self.name}: 视觉信号丢失，立即停止并等待恢复...")
+                            self.locomotion.set_motion(1) # 发现看不清路，原地站立不动
+                            time.sleep(0.5)
+                        else:
+                            self.locomotion.set_motion(1) # 持续看不清路，保持站立
+                            time.sleep(0.2)
+                            blind_msg_count += 1
+                            if blind_msg_count % 30 == 0:
+                                print(f"{self.name}: 正在等待视觉信号... (已停止 {current_time - self.blind_walk_start:.1f}s)")
+                        
+                        if current_time - self.last_check_time > self.stuck_check_interval:
+                            self.last_check_time = current_time
+                        continue
+
+                    # === 有视觉数据 ===
+                    if not had_vision:
+                        print(f"{self.name}: 视觉已恢复！开始赛道跟踪。")
+                    had_vision = True
+
+                    offset = data.get('center_offset', 0)
+                    dist = data.get('center_distance', 0)
+
+                    center_x = 160
+
+                    # 1. 黄色边界线避障逻辑（2026 增强版：侧移替代后退）
+                    boundary_steer = 0
+
+                    if (left_edge is not None and (center_x - left_edge) < self.critical_margin) or \
+                       (right_edge is not None and (right_edge - center_x) < self.critical_margin):
+                        print(f"{self.name}: 靠近边界，执行纠正侧移...")
+                        if left_edge is not None and (center_x - left_edge) < self.critical_margin:
+                            self.locomotion.set_motion(14) # 右移
+                        else:
+                            self.locomotion.set_motion(13) # 左移
+                        time.sleep(0.2)
+                        continue
+
+                    if left_edge is not None and (center_x - left_edge) < self.safe_margin:
+                        boundary_steer = 12
+                    elif right_edge is not None and (right_edge - center_x) < self.safe_margin:
+                        boundary_steer = 11
+
+                    # 2. 卡死检测逻辑 (增强版)
+                    if current_time - self.last_check_time > self.stuck_check_interval:
+                        # 检查是否有位置进度或视觉距离变化
+                        is_stuck = False
+                        if self.last_dist != -1:
+                            dist_change = abs(dist - self.last_dist)
+                            if dist_change < self.stuck_dist_threshold:
+                                is_stuck = True
+                        
+                        if is_stuck:
+                            self.stuck_count += 1
+                            print(f"Stuck detected! Count: {self.stuck_count}/2")
+                            if self.stuck_count >= 2:
+                                print("Auto-recovery: side-shift wiggle + ultra-high step...")
+                                # 1. 侧移摇摆脱困（避免后退到后面石头上）
+                                self.locomotion.set_motion(13)  # 左移
+                                time.sleep(0.12)
+                                self.locomotion.set_motion(14)  # 右移
+                                time.sleep(0.12)
+                                # 2. 极小后退（仅0.12s，一丁点距离）
+                                self.locomotion.set_motion(24)
+                                time.sleep(0.12)
+                                # 3. 极限高抬腿前冲跨越（motion_id=25, step_height=1.00）
+                                self.locomotion.set_motion(25)
+                                time.sleep(0.5)
+                                # 4. 恢复默认前进
+                                self.stuck_count = 0
+                                print("Recovery done, resuming forward.")
+                        else:
+                            self.stuck_count = 0
+                        
+                        self.last_dist = dist
+                        self.last_check_time = current_time
+
+                    # 3. 正常行走与纠偏
+                    if boundary_steer != 0:
+                        self.locomotion.set_motion(boundary_steer)
+                        time.sleep(0.1)
+                    elif offset > self.steering_threshold:
+                        self.locomotion.set_motion(12)
+                        time.sleep(0.1)
+                    elif offset < -self.steering_threshold:
+                        self.locomotion.set_motion(11)
+                        time.sleep(0.1)
+                    else:
+                        self.locomotion.set_motion(self.motion_id)
+                        time.sleep(0.05)
+
+                    if self.target_distance > 0 and dist >= self.target_distance:
+                        print(f"Target distance {self.target_distance} reached.")
+                        break
+
+                except Exception as e:
+                    print(f"Detection error in Robust Walk: {str(e)}")
+                    self.locomotion.set_motion(self.motion_id)
+                    time.sleep(0.1)
+
+        finally:
+            self._ros2_manager.shutdown()
+
+class Walking_Left_Turn(Basic_State):
+    """
+    前进左转（曲线）
+    """
+    def __init__(self, duration=0):
+        super().__init__()
+        self.name = "Walking Left Turn"
+        self.motion_id = 18
+        self.duration = duration
+
+
+class Walking_Right_Turn(Basic_State):
+    """
+    前进右转（曲线）
+    """
+    def __init__(self, duration=0):
+        super().__init__()
+        self.name = "Walking Right Turn"
+        self.motion_id = 15
+        self.duration = duration
+
+
+class Walking_Slope(Basic_State):
+    """
+    上坡下坡
+    """
+    def __init__(self, duration=0):
+        super().__init__()
+        self.name = "Walking Slope"
+        self.motion_id = 19
+        self.duration = duration
+
+
+class Walking_High_Limiter(Basic_State):
+    """
+    限高杆行走
+    """
+    def __init__(self, duration=0):
+        super().__init__()
+        self.name = "Walking High Limiter"
+        self.motion_id = 20
+        self.duration = duration
+
+
+class Walking_Forward_LidarEnhanced(Basic_State):
+    """
+    LiDAR + 视觉双重感知的前进状态（石板路专用）
+
+    特性：
+    1. 激光雷达检测前方障碍物 → 自动切换超高抬腿步态（motion_id=22）跨越石头
+    2. 摄像头跟踪赛道中心线 → 动态纠偏
+    3. 智能卡死检测 → 极小后退（0.25s）+ 超高抬腿前进脱困
+       （不会后退太多，避免退到后面石头上）
+    4. 无视觉/无LiDAR时也能可靠盲走
+    """
+    def __init__(self, duration=120, motion_id=16):
+        super().__init__()
+        self.name = "Walking Forward LiDAR Enhanced"
+        self.duration = duration
+        self.default_motion = motion_id      # 默认步态（高抬腿慢走）
+        self.high_step_motion = 22            # 超高抬腿（跨越石头用，step_height=0.80）
+        self.extreme_step_motion = 25         # 极限高抬腿（大石头脱困用，step_height=1.00）
+        self.recovery_back_motion = 24        # 极小后退（脱困用）
+        self.recovery_forward_motion = 25     # 脱困后前进用（极限高抬腿）
+
+        # 视觉跟踪参数
+        self.steering_threshold = 15
+        self.safe_margin = 35
+        self.critical_margin = 5  # 进一步降低灵敏度，配合下方的“跨越优先”逻辑使用
+
+        # 卡死检测参数
+        self.stuck_check_interval = 5.0
+        self.stuck_dist_threshold = 3
+        self.last_dist = -1
+        self.last_check_time = 0
+        self.stuck_count = 0
+
+        # LiDAR 缓存
+        self._lidar_cache = None
+        self._lidar_cache_time = 0
+        self._lidar_cooldown = 0.5
+
+        # 障碍物计数
+        self.obstacle_count = 0
+        self.no_obstacle_count = 0
+
+        # 石阵置信度计数器 (0.0 ~ 1.0)
+        # 快速上升（检测到石头时+0.3），缓慢衰减（每帧-0.02）
+        # 用于抑制因身体倾斜导致的虚假边界警告
+        self.stone_confidence = 0.0
+        self.STONE_CONFIDENCE_RISE = 0.3    # 检测到石头时单次增加量
+        self.STONE_CONFIDENCE_DECAY = 0.02  # 未检测到石头时单次衰减量
+        self.STONE_CONFIDENCE_HIGH = 0.6    # 高于此阈值：完全禁止后退
+        self.STONE_CONFIDENCE_MID = 0.3     # 高于此阈值：边界警告降级为侧移
+
+    def _get_lidar_data(self):
+        """获取 LiDAR 数据（带缓存，避免频繁创建/销毁节点）"""
+        now = time.time()
+        if self._lidar_cache is not None and (now - self._lidar_cache_time) < self._lidar_cooldown:
+            return self._lidar_cache
+
+        try:
+            from ...camera.path_scanner import lidar_scanner_main
+            data = lidar_scanner_main(timeout=1.5)
+            if data and data.get('scan_available', False):
+                self._lidar_cache = data
+                self._lidar_cache_time = now
+                return data
+        except Exception as e:
+            pass
+
+        if self._lidar_cache is not None:
+            return self._lidar_cache
+        return {'scan_available': False, 'front_blocked': False, 'stone_warning': False,
+                'clear_path': True, 'front_distance': float('inf'),
+                'left_distance': float('inf'), 'right_distance': float('inf')}
+
+    def execute(self):
+        print(f"Executing {self.name} with LiDAR assistance (default: {self.default_motion}, high_step: {self.high_step_motion})")
+
+        from ...camera.path_scanner import check_camera_ready, path_scanner_main, CenterOffsetScanner
+
+        camera_ok = check_camera_ready(timeout=1.0)
+
+        self._ros2_manager.init()
+        sim_clock = self._ros2_manager.get_clock()
+
+        try:
+            _start_time = sim_clock.get_sim_time()
+            wait_count = 0
+            while _start_time is None:
+                if wait_count % 5 == 0:
+                    print(f"Waiting for /clock topic... (Attempt {wait_count})")
+                time.sleep(1.0)
+                _start_time = sim_clock.get_sim_time()
+                wait_count += 1
+            start_time = _start_time.nanosec / 1e9 + _start_time.sec
+            self.last_check_time = start_time
+            had_vision = False
+            blind_msg_count = 0
+
+            # 初始查询一次 LiDAR
+            lidar_data = self._get_lidar_data()
+            lidar_available = lidar_data.get('scan_available', False)
+            if lidar_available:
+                print(f"{self.name}: LiDAR 已就绪，前方距离={lidar_data.get('front_distance', 'N/A'):.2f}m" if isinstance(lidar_data.get('front_distance'), float) else f"{self.name}: LiDAR 已就绪")
+            else:
+                print(f"{self.name}: LiDAR 未就绪，仅使用视觉+盲走模式")
+
+            while True:
+                _current_time = sim_clock.get_sim_time()
+                current_time = _current_time.nanosec / 1e9 + _current_time.sec
+
+                if current_time - start_time >= self.duration:
+                    print("Duration reached, stopping.")
+                    break
+
+                try:
+                    # === LiDAR 感知 ===
+                    lidar_data = self._get_lidar_data()
+                    front_blocked = lidar_data.get('front_blocked', False)
+                    front_dist = lidar_data.get('front_distance', float('inf'))
+                    left_dist = lidar_data.get('left_distance', float('inf'))
+                    right_dist = lidar_data.get('right_distance', float('inf'))
+                    stone_warning = (front_dist < 0.35 and front_dist >= 0.22)
+
+                    # 更新石阵置信度（快速上升、缓慢衰减）
+                    if front_blocked or stone_warning:
+                        self.stone_confidence = min(1.0, self.stone_confidence + self.STONE_CONFIDENCE_RISE)
+                    else:
+                        self.stone_confidence = max(0.0, self.stone_confidence - self.STONE_CONFIDENCE_DECAY)
+
+                    # === 视觉感知 ===
+                    if not camera_ok:
+                        # 无摄像头：纯盲走 + LiDAR避障
+                        if front_blocked:
+                            self.obstacle_count += 1
+                            self.no_obstacle_count = 0
+                            if self.obstacle_count >= 2:
+                                # LiDAR持续检测到前方障碍 → 极限高抬腿跨越
+                                step = self.extreme_step_motion if front_dist < 0.22 else self.high_step_motion
+                                print(f"LiDAR: 前方障碍 {front_dist:.2f}m，启用{'极限' if front_dist < 0.22 else '超高'}抬腿跨越！")
+                                self.locomotion.set_motion(step)
+                                time.sleep(0.35)
+                                self.obstacle_count = 0
+                            else:
+                                self.locomotion.set_motion(self.default_motion)
+                                time.sleep(0.1)
+                        else:
+                            self.obstacle_count = max(0, self.obstacle_count - 0.5)
+                            self.no_obstacle_count += 1
+                            self.locomotion.set_motion(self.default_motion)
+                            time.sleep(0.1)
+
+                        blind_msg_count += 1
+                        if blind_msg_count % 50 == 0:
+                            print(f"{self.name}: 盲走模式 (已走{current_time - start_time:.1f}s, LiDAR={'OK' if lidar_data.get('scan_available') else 'N/A'})")
+
+                        if current_time - self.last_check_time > self.stuck_check_interval:
+                            self.last_check_time = current_time
+                        continue
+
+                    # === 有摄像头 ===
+                    data = path_scanner_main(CenterOffsetScanner, timeout=1.0)
+                    left_edge = data.get('left_edge') if data else None
+                    right_edge = data.get('right_edge') if data else None
+                    has_track = (left_edge is not None) or (right_edge is not None)
+
+                    if not has_track:
+                        if had_vision:
+                            print(f"{self.name}: 视觉信号丢失，站立等待...")
+                            self.locomotion.set_motion(1)
+                            time.sleep(0.5)
+                        else:
+                            self.locomotion.set_motion(1)
+                            time.sleep(0.2)
+                            blind_msg_count += 1
+                            if blind_msg_count % 30 == 0:
+                                print(f"{self.name}: 等待视觉... (已等{current_time - start_time:.1f}s)")
+
+                        if current_time - self.last_check_time > self.stuck_check_interval:
+                            self.last_check_time = current_time
+                        continue
+
+                    if not had_vision:
+                        print(f"{self.name}: 视觉已恢复！")
+                    had_vision = True
+
+                    offset = data.get('center_offset', 0)
+                    dist = data.get('center_distance', 0)
+                    center_x = 160
+
+                    # === 1. 紧急边界避障（石阵置信度分级响应） ===
+                    if (left_edge is not None and (center_x - left_edge) < self.critical_margin) or \
+                       (right_edge is not None and (right_edge - center_x) < self.critical_margin):
+
+                        # 石阵置信度高 → 相机边界警告大概率是倾斜造成的误判，禁止后退
+                        if self.stone_confidence >= self.STONE_CONFIDENCE_HIGH:
+                            print(f"{self.name}: 石阵高置信度({self.stone_confidence:.2f})，边界警告降级为前冲 (L:{left_edge}, R:{right_edge})")
+                            if left_edge is not None and (center_x - left_edge) < self.critical_margin:
+                                self.locomotion.set_motion(14)  # 右移
+                                time.sleep(0.10)
+                            else:
+                                self.locomotion.set_motion(13)  # 左移
+                                time.sleep(0.10)
+                            self.locomotion.set_motion(25)  # 极限抬腿前冲
+                            time.sleep(0.15)
+
+                        # 石阵置信度中等 → 谨慎侧移，不后退
+                        elif self.stone_confidence >= self.STONE_CONFIDENCE_MID:
+                            print(f"{self.name}: 石阵中置信度({self.stone_confidence:.2f})，侧移避让不后退 (L:{left_edge}, R:{right_edge})")
+                            if left_edge is not None and (center_x - left_edge) < self.critical_margin:
+                                self.locomotion.set_motion(14)
+                                time.sleep(0.12)
+                            else:
+                                self.locomotion.set_motion(13)
+                                time.sleep(0.12)
+                            # 中置信度下只侧移，不强制前冲（避免真实边界时冲出赛道）
+
+                        # 前方确有 LiDAR 障碍 → 即使置信度低，也优先跨越而非后退
+                        elif front_blocked or stone_warning:
+                            print(f"{self.name}: LiDAR检测到障碍+边界警告，抬腿跨越 (L:{left_edge}, R:{right_edge})")
+                            step = self.extreme_step_motion if front_blocked else self.high_step_motion
+                            self.locomotion.set_motion(step)
+                            time.sleep(0.35)
+
+                        # 空旷路面 + 低置信度 → 真正需要后退的情况，允许后退
+                        else:
+                            print(f"{self.name}: CRITICAL 置信度({self.stone_confidence:.2f}) 空旷路面边界警告，极小后退...")
+                            self.locomotion.set_motion(self.recovery_back_motion)
+                            time.sleep(0.25)
+                        continue
+
+                    # === 2. LiDAR 前方障碍物处理 ===
+                    # 近距障碍(<0.22m) → 极限高抬腿；中距障碍(0.22-0.35m) → 超高抬腿
+                    if front_blocked or stone_warning:
+                        if front_blocked:
+                            self.obstacle_count += 1
+                        else:
+                            self.obstacle_count += 0.5  # 中距警告累积较慢
+                        self.no_obstacle_count = 0
+                        if self.obstacle_count >= 2:
+                            # 持续检测到障碍 → 抬腿跨越
+                            step_motion = self.extreme_step_motion if front_blocked else self.high_step_motion
+                            print(f"LiDAR: 前方{'障碍' if front_blocked else '石头'} {front_dist:.2f}m，{'极限' if front_blocked else '超高'}抬腿跨越！")
+                            # 根据左右空间决定偏转方向
+                            if left_dist > right_dist and left_dist > 0.5:
+                                self.locomotion.set_motion(step_motion)
+                                time.sleep(0.25)
+                                self.locomotion.set_motion(13)
+                                time.sleep(0.12)
+                            elif right_dist > left_dist and right_dist > 0.5:
+                                self.locomotion.set_motion(step_motion)
+                                time.sleep(0.25)
+                                self.locomotion.set_motion(14)
+                                time.sleep(0.12)
+                            else:
+                                self.locomotion.set_motion(step_motion)
+                                time.sleep(0.35)
+                            self.obstacle_count = 0
+                            continue
+                    else:
+                        self.obstacle_count = max(0, self.obstacle_count - 0.5)
+                        self.no_obstacle_count += 1
+
+                    # === 3. 卡死检测 ===
+                    if current_time - self.last_check_time > self.stuck_check_interval:
+                        is_stuck = False
+                        if self.last_dist != -1:
+                            dist_change = abs(dist - self.last_dist)
+                            if dist_change < self.stuck_dist_threshold:
+                                is_stuck = True
+
+                        if is_stuck:
+                            self.stuck_count += 1
+                            print(f"Stuck #{self.stuck_count}/2 (dist_change={dist - self.last_dist:.1f}px)")
+
+                            if self.stuck_count >= 2:
+                                print("Recovery: wiggle + micro-backup + extreme high-step...")
+                                # 1. 优先侧移摇摆脱困（不后退，避免退到后面石头上）
+                                self.locomotion.set_motion(13)
+                                time.sleep(0.15)
+                                self.locomotion.set_motion(14)
+                                time.sleep(0.15)
+                                # 2. 仅当LiDAR显示后方畅通时才极小后退
+                                lidar_check = self._get_lidar_data()
+                                rear_clear = lidar_check.get('front_distance', float('inf')) > 0.4
+                                if rear_clear:
+                                    self.locomotion.set_motion(self.recovery_back_motion)
+                                    time.sleep(0.10)  # 极短后退，仅0.10s
+                                # 3. 极限高抬腿前冲（motion_id=25, step_height=1.00）
+                                self.locomotion.set_motion(self.recovery_forward_motion)
+                                time.sleep(0.5)
+                                # 4. 根据LiDAR微调方向避开障碍
+                                if left_dist > right_dist and left_dist < 2.0:
+                                    self.locomotion.set_motion(13)
+                                    time.sleep(0.15)
+                                elif right_dist < 2.0:
+                                    self.locomotion.set_motion(14)
+                                    time.sleep(0.15)
+                                self.stuck_count = 0
+                                print("Recovery done, resuming forward.")
+                        else:
+                            self.stuck_count = max(0, self.stuck_count - 1)
+
+                        self.last_dist = dist
+                        self.last_check_time = current_time
+
+                    # === 4. 正常行走：视觉纠偏 + LiDAR辅助选择步态 ===
+                    # 边界软避障
+                    boundary_steer = 0
+                    if left_edge is not None and (center_x - left_edge) < self.safe_margin:
+                        boundary_steer = 12
+                    elif right_edge is not None and (right_edge - center_x) < self.safe_margin:
+                        boundary_steer = 11
+
+                    # 选择步态：路径畅通时用默认步态，否则用高抬腿
+                    current_motion = self.default_motion
+                    if front_blocked and self.no_obstacle_count < 3:
+                        current_motion = self.high_step_motion
+
+                    if boundary_steer != 0:
+                        self.locomotion.set_motion(boundary_steer)
+                        time.sleep(0.08)
+                    elif offset > self.steering_threshold:
+                        self.locomotion.set_motion(12)  # 右转纠偏
+                        time.sleep(0.08)
+                    elif offset < -self.steering_threshold:
+                        self.locomotion.set_motion(11)  # 左转纠偏
+                        time.sleep(0.08)
+                    else:
+                        self.locomotion.set_motion(current_motion)
+                        time.sleep(0.05)
+
+                except Exception as e:
+                    print(f"LiDAR Enhanced Walk error: {str(e)}")
+                    self.locomotion.set_motion(self.default_motion)
+                    time.sleep(0.1)
+
+        finally:
+            self._ros2_manager.shutdown()
+
+
+# class Check_forward_point(Basic_State):
+#     def __init__(self, duration=0):
+#         super().__init__()
+#         self.name = "Checking_forward_point"
+#         self.scanner = None
+#         self.result = None
+#         self.duration = 5
+    
+    
+#     def get_motion(self,duration):
+#         while True:
+#             data = shared_data.get()
+            
+#             # 检查数据时效性（1秒内有效）
+#             if time.time() - data['timestamp'] > 1.0:
+#                 print("等待有效数据...")
+#                 time.sleep(0.1)
+#                 continue
+                
+#             farthest_info = data['farthest_info']
+#             if farthest_info and farthest_info[1] < duration:
+#                 self.motion_id = 1  # 到达位置
+#             else:
+#                 self.motion_id = 5  # 继续前进
+        
+
+# class Walking_Forward_by_distance(Basic_State):
+#     '''
+    
+#     '''
+#     def __init__(self, duration,distance):
+#         super().__init__()
+#         self.name = "Walking Forward by distance"
+#         self.duration = duration  
+#         self.flag = 0
+#         self.distance = distance
+# 
+# #     def execute(self):
+# #         print(f"Executing {self.name} with distance threshold: {self.duration}")
+# #     self._ros2_manager.init()
+# #     sim_clock = self._ros2_manager.get_clock()
+# #     
+# #     try:
+# #         _start_time = sim_clock.get_sim_time()
+# #         wait_count = 0
+# #         while _start_time is None:
+# #             if wait_count % 5 == 0:
+# #                 print(f"Waiting for /clock topic... (Attempt {wait_count})")
+# #             time.sleep(1.0)
+# #             _start_time = sim_clock.get_sim_time()
+# #             wait_count += 1
+# #         start_time = _start_time.nanosec / 1e9 + _start_time.sec
+# #     current_time = start_time
+# # 
+# # #             while True:
+# # #                 time.sleep(0.01)
+# #                 _current_time = sim_clock.get_sim_time()
+# #                 current_time = _current_time.nanosec / 1e9 + _current_time.sec
+# #                 if current_time - start_time >= self.duration:
+# #                     break
+# #                 try:
+# #                     data = path_scanner_main(CenterOffsetScanner, timeout=1.0)  # 动态调用
+# #                     distance= data.get('center_distance', 0)
+# #                     if self.distance <= distance or distance <= 10:
+# #                         self.locomotion.set_motion(5)
+# #                         time.sleep(0.01)
+# #                     elif distance == 0 : 
+# #                         print(f"Finished executing {self.name} in {current_time - start_time:.2f} seconds")
+# #                         break
+# #                 except Exception as e:
+# #                     print(f"检测异常: {str(e)}")
+# #                     break
+#         
+# #         finally:
+# #             sim_clock.destroy_node()
+# #             self._ros2_manager.shutdown()
+# 
+# # class Walking_Forward_by_distance(Basic_State):
+# #     '''
+# #     这个函数写的不是很好，我本意是静态的获得目前的距离，然后根据距离/速度，
+# #     换算出接下来要走的时间。但是发现算的差错太大，目前是不太好用。
+# #     '''
+# #     def __init__(self, duration, check_method):
+# #         super().__init__()
+# #         self.name = "Walking Forward by distance"
+# #         self.duration = duration
+# #         self.check_method = check_method  # 直接存储检测方法引用
+# #         self.flag = 0
+# 
+# #     def execute(self):
+# #         print(f"Executing {self.name} with distance threshold: {self.duration}")
+#         
+# #         # 动态获取最新检测方法
+# #         if not callable(self.check_method):
+# #             raise ValueError("无效的检测方法")
+#             
+# #         start_time = time.time()
+# #         data = self.check_method()  # 动态调用
+# #         distance = data['far_distance']
+# #         threshold = 12.5
+# #         if distance >= 30 :
+# #             threshold = 14
+# #         elif distance >= 25 :
+# #             threshold = 13
+# #         elif distance >= 20 :
+# #             threshold = 12.5
+# #         while time.time() - start_time < threshold :
+# #             try:
+# #                 self.locomotion.set_motion(5)
+# #             except Exception as e:
+# #                 print(f"检测异常: {str(e)}")
+# #                 break
+# #         print(f"Finished executing {self.name} in {time.time() - start_time:.2f} seconds")
+# 
+# # class Walking_Forward_by_bottom(Basic_State):
+# #     def __init__(self, duration , distance):
+# #         """
+# #         向前走，目前是曲线入口专用，根据视野内底边赛道与左边界的距离判断
+# #         """
+# #         super().__init__()
+# #         self.name = "Walking forward by bottom"
+# #         self.motion_id = 5
+# #         self.duration = duration
+# #         self.distance = distance
+# 
+# #     #     def execute(self):
+# #     #         print(f"Executing {self.name} with distance threshold: {self.distance}")
+# #             self._ros2_manager.init()
+# #             sim_clock = self._ros2_manager.get_clock()
+# #     
+# #             try:
+# #                 _start_time = sim_clock.get_sim_time()
+# #                 wait_count = 0
+# #                 while _start_time is None:
+# #                     if wait_count % 5 == 0:
+# #                         print(f"Waiting for /clock topic... (Attempt {wait_count})")
+# #                     time.sleep(1.0)
+# #                     _start_time = sim_clock.get_sim_time()
+# #                 wait_count += 1
+# #             start_time = _start_time.nanosec / 1e9 + _start_time.sec
+# #             current_time = start_time
+# # 
+# #             while True:
+# #                 time.sleep(0.01)
+# #                 _current_time = sim_clock.get_sim_time()
+# #                 current_time = _current_time.nanosec / 1e9 + _current_time.sec
+# #                 if current_time - start_time >= self.duration:
+# #                     break
+# #                 try:
+# #                     data = path_scanner_main(BottomLeftScanner, timeout=1.0)  # 动态调用
+# #                     distance = data.get('left_bottom_distance', 0)
+# #                     if distance <= self.distance:
+# #                         self.locomotion.set_motion(16)
+# #                         time.sleep(0.01)
+# #                     else : 
+# #                         print(f"Finished executing {self.name} in {current_time - start_time:.2f} seconds")
+# #                         break
+# #                 except Exception as e:
+# #                     print(f"检测异常: {str(e)}")
+# #                     break
+# #         finally:
+# #             sim_clock.destroy_node()
+# #             self._ros2_manager.shutdown()
+# 
+# # class Spin_by_black_bar(Basic_State):
+# #     '''
+# #     原地旋转，根据眼前限高杆（小于10度）线条判断，然后决定旋转方向，顺、逆旋转至横线小于1.5度
+# #     '''
+# #     def __init__(self, duration):
+# #         super().__init__()
+# #         self.name = "Spin by black bar"
+# #         self.duration = duration
+# #     #         self.flag = 0
+# #     
+# #     #     def execute(self):
+# #     #         print(f"Executing {self.name} with distance threshold: {self.duration}")
+# #             self._ros2_manager.init()
+# #             sim_clock = self._ros2_manager.get_clock()
+# #     
+# #             try:
+# #                 _start_time = sim_clock.get_sim_time()
+# #                 wait_count = 0
+# #                 while _start_time is None:
+# #                     if wait_count % 5 == 0:
+# #                         print(f"Waiting for /clock topic... (Attempt {wait_count})")
+# #                 time.sleep(1.0)
+# #                 _start_time = sim_clock.get_sim_time()
+# #                 wait_count += 1
+# #             start_time = _start_time.nanosec / 1e9 + _start_time.sec
+#             current_time = start_time
+# 
+# #             while True:
+# #                 time.sleep(0.01)
+# #                 _current_time = sim_clock.get_sim_time()
+# #                 current_time = _current_time.nanosec / 1e9 + _current_time.sec
+# #                 if current_time - start_time >= self.duration:
+# #                     break
+# #                 try:
+# #                     data = path_scanner_main(BlackBarScanner, timeout=1.0)  # 动态调用
+# #                     is_horizontal_line= data.get('is_horizontal_bar', 0)
+# #                     if is_horizontal_line == 2:
+# #                         self.locomotion.set_motion(11)
+# #                     elif is_horizontal_line == 1:
+# #                         self.locomotion.set_motion(12)
+# #                     elif is_horizontal_line == 3:
+# #                         print(f"Finished executing {self.name} in {current_time - start_time:.2f} seconds")
+# #                         break
+# #                     else : 
+# #                         print(f"Finished executing {self.name} in {current_time - start_time:.2f} seconds")
+# #                         break
+# #                 except Exception as e:
+# #                     print(f"检测异常: {str(e)}")
+# #                     break
+# #         finally:
+# #             sim_clock.destroy_node()
+# #             self._ros2_manager.shutdown()   
