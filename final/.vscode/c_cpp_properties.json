@@ -1,0 +1,28 @@
+{
+  // ──────────────────────────────────────────────────────────
+  // VS Code C/C++ IntelliSense 配置
+  // 在容器内 colcon build 后，compile_commands.json 会自动生成
+  // ──────────────────────────────────────────────────────────
+  "configurations": [
+    {
+      "name": "CyberDog Sim (Container)",
+      "compileCommands": "${workspaceFolder}/build/compile_commands.json",
+      "cStandard": "c17",
+      "cppStandard": "c++17",
+      "intelliSenseMode": "linux-gcc-x64",
+      "includePath": [
+        "${workspaceFolder}/src/**",
+        "${workspaceFolder}/install/include/**",
+        "/home/cyberdog_sim/src/**",
+        "/home/cyberdog_sim/install/include/**",
+        "/opt/ros/galactic/include/**",
+        "/usr/include/eigen3",
+        "/usr/local/include"
+      ],
+      "defines": [
+        "ROS_PACKAGE_NAME=\"cyberdog_sim\""
+      ]
+    }
+  ],
+  "version": 4
+}

@@ -1,0 +1,133 @@
+{
+  // =======================================================================
+  // .devcontainer/devcontainer.json
+  // VS Code "Attach to Running Container" 附加配置
+  //
+  // 当 VS Code 附加到容器并打开 /home/cyberdog_sim/my_workspace 后，
+  // 此文件会被自动读取，应用扩展、设置和初始化命令。
+  // =======================================================================
+
+  "name": "CyberDog Sim Dev",
+
+  // ── 镜像信息（从 cyberdog_race2026.tar 导入后的镜像名）
+  "image": "cyberdog_sim:v2026",
+
+  // ── 容器内工作目录（VS Code Attach 后打开此目录 = 本仓库挂载点）
+  "workspaceFolder": "/home/cyberdog_sim/my_workspace",
+
+  // ── 容器运行参数（与 start_container.sh 保持一致）
+  "runArgs": [
+    "--name=cyberdog_sim_dev",
+    "--shm-size=1g",
+    "--privileged=true",
+    "--network=host",
+    "-e", "DISPLAY=${localEnv:DISPLAY}",
+    "-e", "QT_X11_NO_MITSHM=1",
+    "-v", "/tmp/.X11-unix:/tmp/.X11-unix"
+  ],
+
+  // ── 宿主机→容器 挂载（将本仓库代码挂载进容器）
+  "mounts": [
+    "source=${localWorkspaceFolder},target=/home/cyberdog_sim/my_workspace,type=bind,consistency=cached"
+  ],
+
+  // ── 容器启动后执行（source 镜像内已编译好的 ROS 环境）
+  "postStartCommand": "bash -c 'source /opt/ros/galactic/setup.bash && cd /home/cyberdog_sim && [ -f install/setup.bash ] && source install/setup.bash || true'",
+
+  // ── 远端环境变量
+  "remoteEnv": {
+    "ROS_DISTRO": "galactic",
+    "AMENT_PREFIX_PATH": "/opt/ros/galactic",
+    "COLCON_PREFIX_PATH": "/home/cyberdog_sim/install",
+    "GAZEBO_MODEL_PATH": "/home/cyberdog_sim/src/cyberdog_simulator/cyberdog_gazebo/model"
+  },
+
+  // ── VS Code 扩展（在容器内自动安装）
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        // ── ROS & 机器人开发 ──────────────────────────────
+        "ms-iot.vscode-ros",
+        "twxs.cmake",
+        "ms-vscode.cmake-tools",
+
+        // ── C/C++ ────────────────────────────────────────
+        "ms-vscode.cpptools",
+        "ms-vscode.cpptools-extension-pack",
+        "llvm-vs-code-extensions.vscode-clangd",
+
+        // ── Python ──────────────────────────────────────
+        "ms-python.python",
+        "ms-python.pylint",
+
+        // ── 容器开发 ─────────────────────────────────────
+        "ms-vscode-remote.remote-containers",
+
+        // ── 代码质量 ─────────────────────────────────────
+        "streetsidesoftware.code-spell-checker",
+        "eamodio.gitlens",
+        "mhutchie.git-graph",
+
+        // ── 便捷工具 ─────────────────────────────────────
+        "yzhang.markdown-all-in-one",
+        "bierner.markdown-mermaid",
+        "christian-kohler.path-intellisense"
+      ],
+
+      "settings": {
+        // ── 编辑器 ──────────────────────────────────────
+        "editor.formatOnSave": true,
+        "editor.tabSize": 4,
+        "editor.insertSpaces": true,
+        "files.trimTrailingWhitespace": true,
+
+        // ── C/C++ IntelliSense ───────────────────────────
+        "C_Cpp.default.cppStandard": "c++17",
+        "C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json",
+        "C_Cpp.intelliSenseEngine": "default",
+
+        // ── CMake Tools ──────────────────────────────────
+        "cmake.buildDirectory": "${workspaceFolder}/build",
+        "cmake.configureOnOpen": false,
+
+        // ── ROS 扩展 ─────────────────────────────────────
+        "ros.distro": "galactic",
+
+        // ── 终端：自动 source ROS + 仿真环境 ─────────────
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "terminal.integrated.profiles.linux": {
+          "ROS bash": {
+            "path": "/bin/bash",
+            "args": ["-c", "source /opt/ros/galactic/setup.bash && cd /home/cyberdog_sim && [ -f install/setup.bash ] && source install/setup.bash; exec bash"]
+          }
+        },
+        "terminal.integrated.env.linux": {
+          "ROS_DISTRO": "galactic",
+          "AMENT_PREFIX_PATH": "/opt/ros/galactic"
+        },
+
+        // ── 文件关联 ─────────────────────────────────────
+        "files.associations": {
+          "*.lcm":  "cpp",
+          "*.msg":  "plaintext",
+          "*.urdf": "xml",
+          "*.xacro":"xml",
+          "*.world":"xml",
+          "*.sdf":  "xml"
+        },
+
+        // ── 排除不必要的目录（提升 IntelliSense 速度）────
+        "files.watcherExclude": {
+          "**/build/**": true,
+          "**/install/**": true,
+          "**/log/**": true
+        },
+        "search.exclude": {
+          "**/build": true,
+          "**/install": true,
+          "**/log": true
+        }
+      }
+    }
+  }
+}

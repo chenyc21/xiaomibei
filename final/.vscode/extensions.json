@@ -1,0 +1,12 @@
+{
+  "recommendations": [
+    "ms-vscode-remote.remote-containers",
+    "ms-vscode-remote.vscode-remote-extensionpack",
+    "ms-iot.vscode-ros",
+    "ms-vscode.cpptools",
+    "ms-vscode.cmake-tools",
+    "twxs.cmake",
+    "ms-python.python",
+    "bierner.markdown-mermaid"
+  ]
+}

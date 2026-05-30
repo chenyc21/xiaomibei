@@ -1,0 +1,150 @@
+{
+  // ──────────────────────────────────────────────────────────
+  // VS Code Tasks — CyberDog Sim 开发任务
+  //
+  // 路径说明（容器内）：
+  //   /home/cyberdog_sim             = 镜像内预置仿真环境（原装代码 + 已编译）
+  //   /home/cyberdog_sim/my_workspace = 本仓库挂载点（竞赛开发代码，VS Code 打开此处）
+  //
+  // 使用方式：VS Code 附加到容器后，Ctrl+Shift+B 执行默认构建任务
+  // ──────────────────────────────────────────────────────────
+  "version": "2.0.0",
+  "tasks": [
+
+    // ── 仿真启动 ─────────────────────────────────────────────
+    {
+      "label": "🚀 Launch Simulation (launchsim.py)",
+      "detail": "一键启动 Gazebo + cyberdog_control + rviz2（cyberdog.md 标准流程）",
+      "type": "shell",
+      "command": "bash -c 'source /opt/ros/galactic/setup.bash && source /home/cyberdog_sim/install/setup.bash && cd /home/cyberdog_sim && python3 src/cyberdog_simulator/cyberdog_gazebo/script/launchsim.py'",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+
+    {
+      "label": "🚀 Launch Gazebo only",
+      "detail": "仅启动 Gazebo 仿真程序（不含控制程序）",
+      "type": "shell",
+      "command": "bash -c 'source /opt/ros/galactic/setup.bash && source /home/cyberdog_sim/install/setup.bash && cd /home/cyberdog_sim && ros2 launch cyberdog_gazebo race_gazebo.launch.py'",
+      "presentation": { "reveal": "always", "panel": "dedicated" }
+    },
+
+    {
+      "label": "🚀 Launch Gazebo with LiDAR",
+      "detail": "启动 Gazebo 并开启激光雷达传感器",
+      "type": "shell",
+      "command": "bash -c 'source /opt/ros/galactic/setup.bash && source /home/cyberdog_sim/install/setup.bash && cd /home/cyberdog_sim && ros2 launch cyberdog_gazebo race_gazebo.launch.py use_lidar:=true'",
+      "presentation": { "reveal": "always", "panel": "dedicated" }
+    },
+
+    {
+      "label": "🤖 Launch cyberdog_control",
+      "detail": "启动运动控制程序（需 Gazebo 已运行）",
+      "type": "shell",
+      "command": "bash -c 'source /opt/ros/galactic/setup.bash && source /home/cyberdog_sim/install/setup.bash && cd /home/cyberdog_sim && ros2 launch cyberdog_gazebo cyberdog_control_launch.py'",
+      "presentation": { "reveal": "always", "panel": "dedicated" }
+    },
+
+    {
+      "label": "👁️ Launch rviz2 Visualization",
+      "detail": "启动 rviz2 可视化界面",
+      "type": "shell",
+      "command": "bash -c 'source /opt/ros/galactic/setup.bash && source /home/cyberdog_sim/install/setup.bash && cd /home/cyberdog_sim && ros2 launch cyberdog_visual cyberdog_visual.launch.py'",
+      "presentation": { "reveal": "always", "panel": "dedicated" }
+    },
+
+    // ── 竞赛代码构建 ─────────────────────────────────────────
+    {
+      "label": "🔨 colcon build (competition packages)",
+      "detail": "在 my_workspace 中编译竞赛新增包",
+      "type": "shell",
+      "command": "bash -c 'source /opt/ros/galactic/setup.bash && source /home/cyberdog_sim/install/setup.bash && cd /home/cyberdog_sim/my_workspace && colcon build --merge-install --symlink-install --packages-select competition_msgs competition_manager competition_perception competition_motion_bridge competition_voice 2>&1'",
+      "group": "build",
+      "options": { "cwd": "${workspaceFolder}" },
+      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true },
+      "problemMatcher": "$gcc"
+    },
+
+    {
+      "label": "🔨 colcon build (competition_msgs only)",
+      "detail": "单独编译消息定义包（其他包依赖此包，需优先编译）",
+      "type": "shell",
+      "command": "bash -c 'source /opt/ros/galactic/setup.bash && cd /home/cyberdog_sim/my_workspace && colcon build --merge-install --symlink-install --packages-select competition_msgs'",
+      "group": "build",
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": "$gcc"
+    },
+
+    // ── 竞赛节点启动 ─────────────────────────────────────────
+    {
+      "label": "▶️ Run Competition Manager",
+      "detail": "启动全局状态机节点",
+      "type": "shell",
+      "command": "bash -c 'source /opt/ros/galactic/setup.bash && source /home/cyberdog_sim/install/setup.bash && source /home/cyberdog_sim/my_workspace/install/setup.bash && ros2 run competition_manager competition_manager_node'",
+      "presentation": { "reveal": "always", "panel": "dedicated" }
+    },
+
+    {
+      "label": "▶️ Run Perception Node",
+      "detail": "启动感知节点（目标检测 + 边界检测）",
+      "type": "shell",
+      "command": "bash -c 'source /opt/ros/galactic/setup.bash && source /home/cyberdog_sim/install/setup.bash && source /home/cyberdog_sim/my_workspace/install/setup.bash && ros2 run competition_perception perception_node'",
+      "presentation": { "reveal": "always", "panel": "dedicated" }
+    },
+
+    {
+      "label": "▶️ Run Motion Bridge",
+      "detail": "启动运动桥接节点（ROS2 ↔ LCM）",
+      "type": "shell",
+      "command": "bash -c 'source /opt/ros/galactic/setup.bash && source /home/cyberdog_sim/install/setup.bash && source /home/cyberdog_sim/my_workspace/install/setup.bash && ros2 run competition_motion_bridge motion_bridge_node'",
+      "presentation": { "reveal": "always", "panel": "dedicated" }
+    },
+
+    // ── ROS2 调试工具 ─────────────────────────────────────────
+    {
+      "label": "📡 ros2 topic list",
+      "type": "shell",
+      "command": "bash -c 'source /opt/ros/galactic/setup.bash && source /home/cyberdog_sim/install/setup.bash && ros2 topic list'",
+      "presentation": { "reveal": "always", "panel": "shared" }
+    },
+
+    {
+      "label": "📊 rqt_graph",
+      "type": "shell",
+      "command": "bash -c 'source /opt/ros/galactic/setup.bash && source /home/cyberdog_sim/install/setup.bash && rqt_graph'",
+      "presentation": { "reveal": "always", "panel": "shared" }
+    },
+
+    {
+      "label": "🔍 lcm spy (实时 LCM 数据监测)",
+      "detail": "运行 lcm spy 实时查看 LCM 通信数据",
+      "type": "shell",
+      "command": "bash -c 'cd /home/cyberdog_sim/src/cyberdog_locomotion/script && ./make_types.sh 2>/dev/null; ./launch_lcm_spy.sh'",
+      "presentation": { "reveal": "always", "panel": "dedicated" }
+    },
+
+    // ── 紧急清理 ─────────────────────────────────────────────
+    {
+      "label": "💀 Kill all Gazebo processes",
+      "detail": "强制杀死所有 Gazebo 进程（解决无法通过 Ctrl+C 退出的问题）",
+      "type": "shell",
+      "command": "killall -9 gazebo 2>/dev/null; killall -9 gzserver 2>/dev/null; killall -9 gzclient 2>/dev/null; echo 'All Gazebo processes killed.'",
+      "presentation": { "reveal": "always", "panel": "shared" }
+    },
+
+    {
+      "label": "🗑️ colcon clean (my_workspace)",
+      "detail": "清理竞赛代码的编译产物",
+      "type": "shell",
+      "command": "rm -rf /home/cyberdog_sim/my_workspace/build /home/cyberdog_sim/my_workspace/install /home/cyberdog_sim/my_workspace/log && echo 'Cleaned.'",
+      "presentation": { "reveal": "always", "panel": "shared" }
+    }
+  ]
+}
