@@ -159,6 +159,8 @@ class BridgeScanner(PathScannerBase):
         line_detected, line_y, line_confidence = self._detect_bridge_line(hsv, h, w)
 
         return {
+            'image_width': w,
+            'image_height': h,
             'bridge_detected': confidence > 0.0,
             'center_offset': offset,
             'left_edge': left_edge,

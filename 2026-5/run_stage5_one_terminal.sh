@@ -169,13 +169,13 @@ gz world -w earth -p 0 >/dev/null 2>&1 || true
 ros2 service call /unpause_physics std_srvs/srv/Empty "{}" >/dev/null 2>&1 || true
 
 cd "$REPO_ROOT"
-echo "移动到第五赛段入口..."
+echo "移动到第五赛段桥上开始位置..."
 if ! python3 spawn_stage5.py; then
     echo
-    echo "普通传送失败，尝试删除并重生 robot 到第五赛段入口..."
+    echo "普通传送失败，尝试删除并重生 robot 到第五赛段桥上开始位置..."
     if ! python3 spawn_stage5.py --respawn; then
         echo
-        echo "移动到第五赛段入口失败。Gazebo 会保持打开，方便你观察现场。"
+        echo "移动到第五赛段桥上开始位置失败。Gazebo 会保持打开，方便你观察现场。"
         echo "Gazebo 日志: $LOG_DIR/gazebo.log"
         echo "按 Ctrl+C 退出并清理后台进程。"
         while true; do

@@ -14,7 +14,7 @@ from cyberdog_controller.FSM.fsm import FSM
 def main():
     print("=" * 60)
     print("  第五赛段：孤梁稳渡 (Stage 5: Bridge Crossing)")
-    print("  任务：桥上稳定前进 -> 四足越虚线 -> 安全下桥")
+    print("  任务：桥上稳定前进 -> 四足越虚线 -> 跳下独木桥")
     print("=" * 60)
 
     fsm = FSM()

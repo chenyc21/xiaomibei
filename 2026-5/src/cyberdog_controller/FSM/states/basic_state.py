@@ -20,6 +20,24 @@ def lidar_scanner_main(timeout=2.0):
     return scanner(timeout=timeout)
 
 
+def _bridge_line_is_close(data, min_y_ratio=0.58, min_confidence=0.25):
+    if not data.get('line_detected'):
+        return False
+
+    confidence = data.get('line_confidence', 0.0) or 0.0
+    if confidence < min_confidence:
+        return False
+
+    line_y = data.get('line_y')
+    image_height = data.get('image_height')
+    if line_y is None:
+        return False
+    if image_height:
+        return line_y >= image_height * min_y_ratio
+
+    return True
+
+
 class Basic_State(ABC):
     def __init__(self):
         self.name = "Basic_State"
@@ -94,6 +112,36 @@ class Recovery_Stand(Basic_State):
         self.name = "Recovery Stand"
         self.motion_id = 2
         self.duration = duration
+        self.trigger_duration = 0.25
+
+    def execute(self):
+        self._ros2_manager.init()
+        sim_clock = self._ros2_manager.get_clock()
+
+        try:
+            print(
+                f"Executing {self.name}: trigger recovery then hold locomotion stand "
+                f"for duration {self.duration}"
+            )
+            start_time = self._wait_for_start_time(sim_clock)
+            current_time = start_time
+
+            while True:
+                elapsed = current_time - start_time
+                if elapsed >= self.duration:
+                    break
+
+                if elapsed < self.trigger_duration:
+                    self.locomotion.set_motion(self.motion_id)
+                else:
+                    self.locomotion.set_motion(1)
+                time.sleep(0.02)
+                current_time = self._get_current_time(sim_clock, current_time)
+
+            self.locomotion.set_motion(1)
+            print(f"Finished executing {self.name} in {current_time - start_time:.2f} seconds")
+        finally:
+            self._ros2_manager.shutdown()
 
 
 class Laying(Basic_State):
@@ -120,10 +168,24 @@ class Walking_Forward_Slow(Basic_State):
         self.duration = duration
 
 
+class Slope_Bridge_Forward(Basic_State):
+    def __init__(self, duration=0):
+        super().__init__()
+        self.name = "Slope Bridge Forward"
+        self.motion_id = 25
+        self.duration = duration
+
+
+class Walking_Forward_Slope(Slope_Bridge_Forward):
+    def __init__(self, duration=0):
+        super().__init__(duration)
+        self.name = "Walking Forward Slope Bridge"
+
+
 class Walking_Forward_Climb(Basic_State):
     def __init__(self, duration=0):
         super().__init__()
-        self.name = "Walking Forward Climb"
+        self.name = "Bridge Entry High Step"
         self.motion_id = 17
         self.duration = duration
 
@@ -176,17 +238,46 @@ class Spin_Right(Basic_State):
         self.duration = duration
 
 
+class Bridge_Turn_Left(Basic_State):
+    def __init__(self, duration=7.9):
+        super().__init__()
+        self.name = "Bridge Stable Turn Left"
+        self.motion_id = 23
+        self.duration = duration
+
+
+class Bridge_Turn_Right(Basic_State):
+    def __init__(self, duration=7.9):
+        super().__init__()
+        self.name = "Bridge Stable Turn Right"
+        self.motion_id = 24
+        self.duration = duration
+
+
+class Slope_Bridge_Turn_Left(Basic_State):
+    def __init__(self, duration=8.5):
+        super().__init__()
+        self.name = "Slope Bridge Turn Left"
+        self.motion_id = 26
+        self.duration = duration
+
+
+class Slope_Bridge_Turn_Right(Basic_State):
+    def __init__(self, duration=8.5):
+        super().__init__()
+        self.name = "Slope Bridge Turn Right"
+        self.motion_id = 27
+        self.duration = duration
+
+
 class Bridge_Entry_Climb(Basic_State):
     """
-    上桥入口连续爬台：卡住时保持高抬腿向前，不切后退或停站重试。
+    上桥入口慢速进入：第五赛段要求全程在独木桥上行走，入口段不使用快速冲刺。
     """
-    def __init__(self, duration=9.5, strong_duration=5.0, pulse_interval=1.2, pulse_duration=0.5):
+    def __init__(self, duration=9.5):
         super().__init__()
-        self.name = "Bridge Entry Continuous Climb"
+        self.name = "Bridge Entry High Step"
         self.duration = duration
-        self.strong_duration = strong_duration
-        self.pulse_interval = pulse_interval
-        self.pulse_duration = pulse_duration
 
     def execute(self):
         print(f"Executing {self.name} for duration {self.duration}")
@@ -195,20 +286,14 @@ class Bridge_Entry_Climb(Basic_State):
 
         try:
             start_time = self._wait_for_start_time(sim_clock)
+            current_time = start_time
             while True:
-                current_time = self._get_current_time(sim_clock, start_time)
+                current_time = self._get_current_time(sim_clock, current_time)
                 elapsed = current_time - start_time
                 if elapsed >= self.duration:
                     break
 
-                if elapsed < self.strong_duration:
-                    self.locomotion.set_motion(17)
-                else:
-                    pulse_time = (elapsed - self.strong_duration) % self.pulse_interval
-                    if pulse_time < self.pulse_duration:
-                        self.locomotion.set_motion(17)
-                    else:
-                        self.locomotion.set_motion(18)
+                self.locomotion.set_motion(17)
                 time.sleep(0.02)
 
             print(f"Finished executing {self.name} in {elapsed:.2f} seconds")
@@ -220,11 +305,12 @@ class Bridge_Center_Forward(Basic_State):
     """
     独木桥居中慢行：视觉可用时根据桥面中心微调，视觉失效时保守慢走。
     """
-    def __init__(self, duration=10.0, stop_on_line=False):
+    def __init__(self, duration=10.0, stop_on_line=False, line_min_y_ratio=0.58):
         super().__init__()
         self.name = "Bridge Center Forward"
         self.duration = duration
         self.stop_on_line = stop_on_line
+        self.line_min_y_ratio = line_min_y_ratio
         self.align_threshold = 18
         self.strong_align_threshold = 45
         self.line_confirm_frames = 2
@@ -236,10 +322,11 @@ class Bridge_Center_Forward(Basic_State):
 
         try:
             start_time = self._wait_for_start_time(sim_clock)
+            current_time = start_time
             line_seen_count = 0
 
             while True:
-                current_time = self._get_current_time(sim_clock, start_time)
+                current_time = self._get_current_time(sim_clock, current_time)
                 if current_time - start_time >= self.duration:
                     print(f"{self.name}: 到达保守时长，结束本段")
                     break
@@ -250,10 +337,10 @@ class Bridge_Center_Forward(Basic_State):
                     print(f"{self.name}: 视觉异常，保守慢走: {str(e)}")
                     data = {}
 
-                if self.stop_on_line and data.get('line_detected'):
+                if self.stop_on_line and _bridge_line_is_close(data, self.line_min_y_ratio):
                     line_seen_count += 1
                     print(
-                        f"{self.name}: 检测到虚线 "
+                        f"{self.name}: 检测到近处虚线 "
                         f"count={line_seen_count}, y={data.get('line_y')}, "
                         f"conf={data.get('line_confidence', 0.0):.2f}"
                     )
@@ -261,6 +348,15 @@ class Bridge_Center_Forward(Basic_State):
                         self.locomotion.set_motion(1)
                         print(f"{self.name}: 已接近虚线，停止前进等待越线确认")
                         break
+                    self.locomotion.set_motion(1)
+                    time.sleep(0.05)
+                    continue
+                elif self.stop_on_line and data.get('line_detected'):
+                    line_seen_count = 0
+                    print(
+                        f"{self.name}: 虚线仍偏远，继续慢走 "
+                        f"y={data.get('line_y')}, conf={data.get('line_confidence', 0.0):.2f}"
+                    )
                 else:
                     line_seen_count = 0
 
@@ -294,11 +390,12 @@ class Bridge_Line_Confirm(Basic_State):
     """
     虚线确认：连续看到虚线才允许进入越线补偿；看不到则等待到保守超时。
     """
-    def __init__(self, max_duration=4.0, required_frames=3):
+    def __init__(self, max_duration=4.0, required_frames=3, line_min_y_ratio=0.58):
         super().__init__()
         self.name = "Bridge Line Confirm"
         self.duration = max_duration
         self.required_frames = required_frames
+        self.line_min_y_ratio = line_min_y_ratio
 
     def execute(self):
         print(f"Executing {self.name}")
@@ -307,10 +404,11 @@ class Bridge_Line_Confirm(Basic_State):
 
         try:
             start_time = self._wait_for_start_time(sim_clock)
+            current_time = start_time
             confirmed_frames = 0
 
             while True:
-                current_time = self._get_current_time(sim_clock, start_time)
+                current_time = self._get_current_time(sim_clock, current_time)
                 if current_time - start_time >= self.duration:
                     print(f"{self.name}: 未稳定识别虚线，采用保守时长 fallback")
                     break
@@ -321,7 +419,7 @@ class Bridge_Line_Confirm(Basic_State):
                     print(f"{self.name}: 检测异常: {str(e)}")
                     data = {}
 
-                if data.get('line_detected') and data.get('line_confidence', 0.0) >= 0.25:
+                if _bridge_line_is_close(data, self.line_min_y_ratio):
                     confirmed_frames += 1
                     self.locomotion.set_motion(1)
                     print(
@@ -334,35 +432,74 @@ class Bridge_Line_Confirm(Basic_State):
                 else:
                     confirmed_frames = 0
                     self.locomotion.set_motion(16)
+                    if data.get('line_detected'):
+                        print(
+                            f"{self.name}: 虚线未到近处，继续慢走 "
+                            f"y={data.get('line_y')}, conf={data.get('line_confidence', 0.0):.2f}"
+                        )
                     time.sleep(0.08)
         finally:
             self._ros2_manager.shutdown()
 
 
-class Bridge_Dismount(Basic_State):
+class Bridge_Jump_Down(Basic_State):
     """
-    下桥：确认越线后短距离低风险前进，避免激烈跳跃导致身体撞桥。
+    赛题第五赛段要求：四个足底都越过独木桥虚线后，从桥上跳下。
     """
-    def __init__(self, duration=1.4):
+    def __init__(self, duration=2.0):
         super().__init__()
-        self.name = "Bridge Dismount"
+        self.name = "Bridge Jump Down"
         self.duration = duration
+        self.motion_id = 22
 
     def execute(self):
-        print(f"Executing {self.name}: 已确认越线，开始下桥")
+        print(f"Executing {self.name}: 已确认四足越线补偿，开始跳下")
         self._ros2_manager.init()
         sim_clock = self._ros2_manager.get_clock()
 
         try:
             start_time = self._wait_for_start_time(sim_clock)
+            current_time = start_time
             while True:
-                current_time = self._get_current_time(sim_clock, start_time)
+                current_time = self._get_current_time(sim_clock, current_time)
                 if current_time - start_time >= self.duration:
                     break
-                self.locomotion.set_motion(5)
+                self.locomotion.set_motion(self.motion_id)
                 time.sleep(0.03)
-            self.locomotion.set_motion(1)
-            print(f"{self.name}: 下桥动作完成")
+            print(f"{self.name}: 跳下动作已发出")
         finally:
             self._ros2_manager.shutdown()
 
+
+class Bridge_Mid_Jump(Basic_State):
+    """
+    第五赛段中段跳跃：先给 Jump3D 足够起跳时间，再进入恢复站立。
+    """
+    def __init__(self, duration=1.8):
+        super().__init__()
+        self.name = "Bridge Mid Jump"
+        self.duration = duration
+        self.motion_id = 22
+        self.trigger_duration = 0.25
+
+    def execute(self):
+        print(f"Executing {self.name}: 短触发 Jump3D，落地后切回 locomotion 站立")
+        self._ros2_manager.init()
+        sim_clock = self._ros2_manager.get_clock()
+
+        try:
+            start_time = self._wait_for_start_time(sim_clock)
+            current_time = start_time
+            while True:
+                current_time = self._get_current_time(sim_clock, current_time)
+                if current_time - start_time >= self.duration:
+                    break
+                if current_time - start_time < self.trigger_duration:
+                    self.locomotion.set_motion(self.motion_id)
+                else:
+                    self.locomotion.set_motion(1)
+                time.sleep(0.03)
+            self.locomotion.set_motion(1)
+            print(f"{self.name}: 中段跳跃动作已发出")
+        finally:
+            self._ros2_manager.shutdown()

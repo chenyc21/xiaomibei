@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-把机器人移动到第五赛段独木桥入口附近，便于单独调试 Stage5。
+把机器人移动到第五赛段桥上开始位置，便于跳过入口动作调试 Stage5。
 
 默认先使用 Gazebo ROS /set_entity_state 传送已有 robot。
 失败后 fallback 到 Gazebo 原生 pose/modify，再失败则删除重生。
@@ -28,11 +28,12 @@ from std_srvs.srv import Empty
 
 
 def stage5_pose_values():
-    yaw = math.pi / 2.0
+    # 第五赛段蓝圈位置：右侧桥段靠上平台口，面朝世界坐标正左方。
+    yaw = math.pi
     return {
-        "x": 3.12,
-        "y": 7.35,
-        "z": 0.55,
+        "x": 3.2,
+        "y": 12.2,
+        "z": 0.60,
         "qx": 0.0,
         "qy": 0.0,
         "qz": math.sin(yaw / 2.0),
@@ -80,7 +81,7 @@ def teleport_robot_with_gz_topic():
 
         if result.returncode == 0:
             subprocess.run(["gz", "world", "-w", "earth", "-p", "0"], check=False)
-            print("[spawn_stage5] 已通过 gz topic 传送 robot 到第五赛段入口。")
+            print("[spawn_stage5] 已通过 gz topic 传送 robot 到第五赛段桥上开始位置。")
             return
         last_error = (result.stderr or result.stdout).strip()
         time.sleep(0.3)
@@ -158,7 +159,7 @@ class Stage5Spawner(Node):
             status = getattr(result, "status_message", "") if result else "服务无返回"
             raise RuntimeError(f"/set_entity_state 传送失败: {status}")
 
-        print("[spawn_stage5] 已通过 /set_entity_state 传送 robot 到第五赛段入口。")
+        print("[spawn_stage5] 已通过 /set_entity_state 传送 robot 到第五赛段桥上开始位置。")
         self.unpause_physics()
 
     def delete_robot(self):
@@ -181,7 +182,7 @@ class Stage5Spawner(Node):
         rclpy.spin_until_future_complete(self, future, timeout_sec=45.0)
         if future.result() is None or not future.result().success:
             raise RuntimeError("重生 robot 失败：/spawn_entity 没有返回成功，请检查 Gazebo 是否存活。")
-        self.get_logger().info(f"已重生到第五赛段入口: {future.result().status_message}")
+        self.get_logger().info(f"已重生到第五赛段桥上开始位置: {future.result().status_message}")
 
     def unpause_physics(self):
         try:
@@ -244,7 +245,7 @@ def teleport_robot():
             failures.append(message)
             print(f"[spawn_stage5] {message}", file=sys.stderr)
 
-    raise RuntimeError("移动到第五赛段入口失败；" + "；".join(failures))
+    raise RuntimeError("移动到第五赛段桥上开始位置失败；" + "；".join(failures))
 
 
 def main():

@@ -20,6 +20,39 @@ robot_cmd = {
 }
 
 
+STAGE5_BRIDGE_FORWARD_VEL = 0.08
+STAGE5_BRIDGE_BODY_HEIGHT = 0.225
+STAGE5_BRIDGE_STEP_HEIGHT = 0.02
+# 斜桥上机身会向右倾，给一个小的左侧 roll 补偿；若现场反向倾斜，把符号改成负值。
+STAGE5_BRIDGE_ROLL_COMPENSATION = 0.1
+STAGE5_BRIDGE_TURN_YAW_RATE = 0.28
+
+STAGE5_ENTRY_FORWARD_VEL = 0.055
+STAGE5_ENTRY_BODY_HEIGHT = 0.265
+STAGE5_ENTRY_STEP_HEIGHT = 0.075
+STAGE5_ENTRY_PITCH_COMPENSATION = 0.02
+
+STAGE5_SLOPE_FORWARD_VEL = 0.06
+STAGE5_SLOPE_LATERAL_VEL = 0.006
+# usergait 底层使用的是相对 des_roll_pitch_height_motion 的高度偏移。
+STAGE5_SLOPE_BODY_HEIGHT_OFFSET = -0.012
+STAGE5_SLOPE_RIGHT_STEP_HEIGHT = 0.040
+STAGE5_SLOPE_LEFT_STEP_HEIGHT = 0.035
+# MotionGaits 当前只直接吃 pitch/height；roll 参数保留，并通过足端 y 偏置间接补偿右倾。
+STAGE5_SLOPE_ROLL_COMPENSATION = -0.06
+STAGE5_SLOPE_PITCH_COMPENSATION = 0.015
+STAGE5_SLOPE_TURN_YAW_RATE = 0.18
+STAGE5_SLOPE_RIGHT_FOOT_Y_BIAS = 0.012
+STAGE5_SLOPE_LEFT_FOOT_Y_BIAS = 0.003
+STAGE5_SLOPE_WBC_WEIGHT = [35.0, 35.0, 15.0, 12.0, 12.0, 18.0]
+STAGE5_SLOPE_WBC_MU = 0.55
+STAGE5_SLOPE_LANDING_GAIN = 0.8
+STAGE5_SLOPE_GAIT_CYCLES = 80
+STAGE5_SLOPE_SWING_MPC_STEPS = 6
+STAGE5_SLOPE_SETTLE_MPC_STEPS = 4
+STAGE5_SLOPE_MOTION_IDS = {25, 26, 27}
+
+
 class MyController:
     def __init__(self, steps, lcm_cmd):
         self.steps = steps
@@ -109,6 +142,122 @@ def _cmd(
     return cmd
 
 
+def _stage5_bridge_walk_cmd():
+    return _cmd(
+        mode=11,
+        gait_id=27,
+        vel=[STAGE5_BRIDGE_FORWARD_VEL, 0.0, 0.0],
+        rpy=[STAGE5_BRIDGE_ROLL_COMPENSATION, 0.0, 0.0],
+        pos=[0.0, 0.0, STAGE5_BRIDGE_BODY_HEIGHT],
+        step_height=[STAGE5_BRIDGE_STEP_HEIGHT, STAGE5_BRIDGE_STEP_HEIGHT],
+        value=3,
+    )
+
+
+def _stage5_bridge_turn_cmd(yaw_rate):
+    return _cmd(
+        mode=11,
+        gait_id=27,
+        vel=[0.0, 0.0, yaw_rate],
+        rpy=[STAGE5_BRIDGE_ROLL_COMPENSATION, 0.0, 0.0],
+        pos=[0.0, 0.0, STAGE5_BRIDGE_BODY_HEIGHT],
+        step_height=[STAGE5_BRIDGE_STEP_HEIGHT, STAGE5_BRIDGE_STEP_HEIGHT],
+        value=3,
+    )
+
+
+def _stage5_bridge_entry_cmd():
+    return _cmd(
+        mode=11,
+        gait_id=27,
+        vel=[STAGE5_ENTRY_FORWARD_VEL, 0.0, 0.0],
+        rpy=[
+            STAGE5_BRIDGE_ROLL_COMPENSATION,
+            STAGE5_ENTRY_PITCH_COMPENSATION,
+            0.0,
+        ],
+        pos=[0.0, 0.0, STAGE5_ENTRY_BODY_HEIGHT],
+        step_height=[STAGE5_ENTRY_STEP_HEIGHT, STAGE5_ENTRY_STEP_HEIGHT],
+        value=3,
+    )
+
+
+def _pack_usergait_step_heights(step_heights):
+    return [
+        math.ceil(step_heights[0] * 1e3) + math.ceil(step_heights[1] * 1e3) * 1e3,
+        math.ceil(step_heights[2] * 1e3) + math.ceil(step_heights[3] * 1e3) * 1e3,
+    ]
+
+
+def _stage5_slope_landing_offsets():
+    # Leg order in the controller is 0=front-right, 1=front-left, 2=rear-right, 3=rear-left.
+    return [
+        0.0, STAGE5_SLOPE_RIGHT_FOOT_Y_BIAS, 0.0,
+        0.0, STAGE5_SLOPE_LEFT_FOOT_Y_BIAS, 0.0,
+        0.0, STAGE5_SLOPE_RIGHT_FOOT_Y_BIAS, 0.0,
+        0.0, STAGE5_SLOPE_LEFT_FOOT_Y_BIAS, 0.0,
+    ]
+
+
+def _stage5_slope_bridge_cmd(forward_vel=STAGE5_SLOPE_FORWARD_VEL, yaw_rate=0.0):
+    step_heights = _pack_usergait_step_heights([
+        STAGE5_SLOPE_RIGHT_STEP_HEIGHT,
+        STAGE5_SLOPE_LEFT_STEP_HEIGHT,
+        STAGE5_SLOPE_RIGHT_STEP_HEIGHT,
+        STAGE5_SLOPE_LEFT_STEP_HEIGHT,
+    ])
+    cmd = _cmd(
+        mode=11,
+        gait_id=110,
+        vel=[forward_vel, STAGE5_SLOPE_LATERAL_VEL, yaw_rate],
+        rpy=[
+            STAGE5_SLOPE_ROLL_COMPENSATION,
+            STAGE5_SLOPE_PITCH_COMPENSATION,
+            0.0,
+        ],
+        pos=[0.0, 0.0, STAGE5_SLOPE_BODY_HEIGHT_OFFSET],
+        step_height=step_heights,
+        value=0,
+        contact=math.floor(STAGE5_SLOPE_LANDING_GAIN * 10.0),
+        acc=STAGE5_SLOPE_WBC_WEIGHT,
+    )
+    landing_offsets = _stage5_slope_landing_offsets()
+    cmd["foot_pose"][0:2] = landing_offsets[0:2]
+    cmd["foot_pose"][2:4] = landing_offsets[3:5]
+    cmd["foot_pose"][4:6] = landing_offsets[6:8]
+    cmd["ctrl_point"][0:2] = landing_offsets[9:11]
+    cmd["ctrl_point"][2] = STAGE5_SLOPE_WBC_MU
+    return cmd
+
+
+def _stage5_slope_bridge_gait_def():
+    lines = [
+        "# Gait Def",
+        "# Stage5 slope bridge crawl gait: one leg swings at a time, with all-foot settle phases.",
+    ]
+
+    def add_section(contact, duration):
+        lines.extend([
+            "[[section]]",
+            f"contact  = [{contact[0]}, {contact[1]}, {contact[2]}, {contact[3]}]",
+            f"duration = {duration}",
+            "",
+        ])
+
+    add_section([1, 1, 1, 1], 12)
+    for _ in range(STAGE5_SLOPE_GAIT_CYCLES):
+        add_section([0, 1, 1, 1], STAGE5_SLOPE_SWING_MPC_STEPS)
+        add_section([1, 1, 1, 1], STAGE5_SLOPE_SETTLE_MPC_STEPS)
+        add_section([1, 1, 1, 0], STAGE5_SLOPE_SWING_MPC_STEPS)
+        add_section([1, 1, 1, 1], STAGE5_SLOPE_SETTLE_MPC_STEPS)
+        add_section([1, 0, 1, 1], STAGE5_SLOPE_SWING_MPC_STEPS)
+        add_section([1, 1, 1, 1], STAGE5_SLOPE_SETTLE_MPC_STEPS)
+        add_section([1, 1, 0, 1], STAGE5_SLOPE_SWING_MPC_STEPS)
+        add_section([1, 1, 1, 1], STAGE5_SLOPE_SETTLE_MPC_STEPS)
+    add_section([1, 1, 1, 1], 30)
+    return "\n".join(lines)
+
+
 @singleton
 class LocomotionController:
     def __init__(self):
@@ -124,9 +273,13 @@ class LocomotionController:
         self.ctrl_thread = None
         self.locomotion_dir = os.path.dirname(os.path.abspath(__file__))
         self.generated_params_path = os.path.join(self.locomotion_dir, "Gait_Params_moonwalk_full.toml")
+        self._stage5_slope_user_gait_def = _stage5_slope_bridge_gait_def()
+        self._stage5_slope_gait_last_publish = 0.0
 
         if not self._try_load_legacy_gait_files():
             self.steps = self._build_builtin_motion_table()
+        self._apply_stage5_motion_overrides()
+        self._publish_stage5_slope_user_gait(force=True)
         self.start_control_thread()
 
     def _find_gait_file(self, filename):
@@ -167,11 +320,11 @@ class LocomotionController:
         mode=11 是 locomotion，gait_id=1/6/27 分别用于站立/行走/慢步。
         """
         steps = [_cmd()]
-        for motion_id in range(1, 26):
+        for motion_id in range(1, 28):
             steps.append(_cmd())
 
         steps[1] = _cmd(mode=11, gait_id=1, vel=[0.0, 0.0, 0.0])
-        steps[2] = _cmd(mode=12, gait_id=0, vel=[0.0, 0.0, 0.0])
+        steps[2] = _cmd(mode=12, gait_id=0, vel=[0.0, 0.0, 0.0], contact=15, duration=5000)
         steps[3] = _cmd(mode=7, gait_id=0, pos=[0.0, 0.0, 0.0])
         steps[5] = _cmd(mode=11, gait_id=6, vel=[0.20, 0.0, 0.0])
         steps[6] = _cmd(mode=11, gait_id=6, vel=[-0.12, 0.0, 0.0])
@@ -181,23 +334,9 @@ class LocomotionController:
         steps[12] = _cmd(mode=11, gait_id=6, vel=[0.0, 0.10, 0.0])
         steps[13] = _cmd(mode=11, gait_id=6, vel=[0.0, 0.10, 0.0])
         steps[14] = _cmd(mode=11, gait_id=6, vel=[0.0, -0.10, 0.0])
-        # 参考赛段工程的 motion_id=16：高抬腿慢走，专门处理台阶/桥入口卡脚。
-        steps[16] = _cmd(
-            mode=11,
-            gait_id=27,
-            vel=[0.08, 0.0, 0.0],
-            pos=[0.0, 0.0, 0.30],
-            step_height=[0.50, 0.50],
-            value=3,
-        )
-        steps[17] = _cmd(
-            mode=11,
-            gait_id=27,
-            vel=[0.055, 0.0, 0.0],
-            pos=[0.0, 0.0, 0.34],
-            step_height=[0.90, 0.90],
-            value=3,
-        )
+        # Stage5 独木桥慢走：赛题要求全程在桥上行走，到桥上虚线后再跳下。
+        steps[16] = _stage5_bridge_walk_cmd()
+        steps[17] = _stage5_bridge_entry_cmd()
         steps[18] = _cmd(
             mode=11,
             gait_id=27,
@@ -206,7 +345,53 @@ class LocomotionController:
             step_height=[0.85, 0.85],
             value=3,
         )
+        steps[23] = _stage5_bridge_turn_cmd(STAGE5_BRIDGE_TURN_YAW_RATE)
+        steps[24] = _stage5_bridge_turn_cmd(-STAGE5_BRIDGE_TURN_YAW_RATE)
+        steps[25] = _stage5_slope_bridge_cmd()
+        steps[26] = _stage5_slope_bridge_cmd(forward_vel=0.0, yaw_rate=STAGE5_SLOPE_TURN_YAW_RATE)
+        steps[27] = _stage5_slope_bridge_cmd(forward_vel=0.0, yaw_rate=-STAGE5_SLOPE_TURN_YAW_RATE)
         return {"step": steps}
+
+    def _apply_stage5_motion_overrides(self):
+        step_table = self.steps["step"]
+        while len(step_table) <= 27:
+            step_table.append(_cmd())
+
+        # 统一恢复站立 ID：legacy gait 表中的 2 不是 RecoveryStand。
+        step_table[2] = _cmd(mode=12, gait_id=0, vel=[0.0, 0.0, 0.0], contact=15, duration=5000)
+
+        # 统一独木桥慢走和入口高抬腿，避免 legacy 表中的旧步态误上桥。
+        step_table[16] = _stage5_bridge_walk_cmd()
+        step_table[17] = _stage5_bridge_entry_cmd()
+
+        # Jump3D: JumpDownStair，赛题第五赛段要求四足越过虚线后跳下。
+        step_table[22] = _cmd(
+            mode=16,
+            gait_id=9,
+            vel=[0.0, 0.0, 0.0],
+            pos=[0.0, 0.0, 0.0],
+            step_height=[0.0, 0.0],
+            duration=0,
+        )
+
+        # 独木桥带角度，转向时使用慢速高抬腿和 roll 补偿，避免快速原地转导致失衡。
+        step_table[23] = _stage5_bridge_turn_cmd(STAGE5_BRIDGE_TURN_YAW_RATE)
+        step_table[24] = _stage5_bridge_turn_cmd(-STAGE5_BRIDGE_TURN_YAW_RATE)
+
+        # 斜坡独木桥专用 usergait：三足支撑爬行，底层 gait_id=110 会读取上面发送的 Gait Def。
+        step_table[25] = _stage5_slope_bridge_cmd()
+        step_table[26] = _stage5_slope_bridge_cmd(forward_vel=0.0, yaw_rate=STAGE5_SLOPE_TURN_YAW_RATE)
+        step_table[27] = _stage5_slope_bridge_cmd(forward_vel=0.0, yaw_rate=-STAGE5_SLOPE_TURN_YAW_RATE)
+
+    def _publish_stage5_slope_user_gait(self, force=False):
+        now = time.monotonic()
+        if not force and now - self._stage5_slope_gait_last_publish < 2.0:
+            return
+        self.usergait_msg.data = self._stage5_slope_user_gait_def
+        self.lcm_usergait.publish("user_gait_file", self.usergait_msg.encode())
+        self._stage5_slope_gait_last_publish = now
+        if force:
+            time.sleep(0.15)
 
     def _initialize_gait_files(self):
         gait_params_path = self._find_gait_file("Gait_Params_moonwalk.toml")
@@ -266,6 +451,8 @@ class LocomotionController:
 
     def set_motion(self, motion_id):
         if 0 <= motion_id < len(self.steps["step"]):
+            if motion_id in STAGE5_SLOPE_MOTION_IDS:
+                self._publish_stage5_slope_user_gait()
             self.my_ctrl.set_num(motion_id)
         else:
             print(f"无效 motion_id: {motion_id}，有效范围 0~{len(self.steps['step']) - 1}")

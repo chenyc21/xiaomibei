@@ -5,13 +5,11 @@ class Stage5_BridgeCrossing(State):
     """
     第五赛段：孤梁稳渡
 
-    半闭环策略：
-    1. 站稳，默认第四赛段已将机身对准独木桥入口；
-    2. 桥上初段低速居中；
-    3. 稳定慢速前进，看到虚线后停止；
-    4. 连续确认虚线，未确认则使用保守时间 fallback；
-    5. 继续补偿一小段，近似保证四足都越过虚线；
-    6. 短距离下桥，落地站稳。
+    赛题要求：
+    1. 全程为连续独木桥，设备需要在独木桥上行走；
+    2. 穿过独木桥上的虚线后可以跳下；
+    3. 必须四个足底都越过虚线后才可以跳下；
+    4. 跳下时不允许身体撞击独木桥。
     """
 
     def __init__(self):
@@ -22,26 +20,48 @@ class Stage5_BridgeCrossing(State):
 
             Standing(1.0),
 
-            # 上桥入口/台阶段：持续高抬腿向前；卡住时继续爬，不后退重试。
-            Bridge_Entry_Climb(duration=9.5, strong_duration=5.0),
+            # 第一段入口动作临时跳过：直接从桥上开始调试后续独木桥。
+            # Walking_Forward_Climb(duration=5.0),
+            # Bridge_Mid_Jump(duration=1.8),
+            # Recovery_Stand(2.5),
+            # Standing(0.5),
+            # Walking_Forward(duration=21.5),
+            # Bridge_Turn_Left(duration=7.3),
+            # Standing(0.3),
 
-            # BridgeAlign: 桥上初段低速居中，视觉失效时保守慢走。
-            Bridge_Center_Forward(duration=4.0, stop_on_line=False),
+            # 第一段 400cm 倾斜独木桥。
+            Slope_Bridge_Forward(duration=51.5),
 
-            # BridgeTraverse: 稳定慢走，识别到虚线后不再继续冲下桥。
-            Bridge_Center_Forward(duration=11.0, stop_on_line=True),
+            Bridge_Turn_Right(duration=10.3),
+            Standing(0.3),
 
-            # BridgeLineConfirm: 连续确认虚线；检测不到则走保守 fallback。
-            Bridge_Line_Confirm(max_duration=4.0, required_frames=3),
+            # 第二段 400cm 倾斜独木桥。
+            #Slope_Bridge_Forward(duration=49),
 
-            # 四足越过虚线补偿段，防止机身过线但后足未过线。
-            Walking_Forward_Slow(2.2),
+            #Bridge_Turn_Right(duration=10.1),
+            #Standing(0.3),
 
-            Standing(0.4),
+            # 第三段倾斜独木桥。
+            Slope_Bridge_Forward(duration=45.5),
 
-            # BridgeDismount: 低风险短距离下桥，避免激烈跳跃撞桥。
-            Bridge_Dismount(duration=1.4),
+            Bridge_Turn_Right(duration=10.3),
+            Standing(0.3),
+
+            # 第四段 400cm 倾斜独木桥。
+            Slope_Bridge_Forward(duration=51.5),
+
+            Bridge_Turn_Right(duration=13.3),
+            Standing(0.3),
+
+            # 第五段倾斜独木桥；走完后右转，面向跳下方向。
+            Walking_Forward(duration=8.5),
+            Bridge_Turn_Right(duration=8.3),
+            Standing(0.6),
+
+            # 使用 Jump3D 下台阶动作跳下，避免用普通行走蹭到桥体。
+            Bridge_Jump_Down(duration=2.0),
 
             # 落地后稳定
-            Standing(2.0),
+            Recovery_Stand(3.0),
+            Standing(1.0),
         ]
